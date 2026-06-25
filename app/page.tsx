@@ -73,7 +73,9 @@ export default function Home() {
           </a>
           {state.status === "ready" && (
             <form method="POST" action="/api/auth/logout">
-              <button type="submit">Log out</button>
+              <button type="submit" className="button">
+                Log out
+              </button>
             </form>
           )}
         </nav>

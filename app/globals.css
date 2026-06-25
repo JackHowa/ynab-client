@@ -25,17 +25,22 @@ h1 {
   margin: 0;
 }
 
-.button,
-button {
+/* Scoped to our own buttons only — do NOT style bare `button`, or these rules
+   leak into CopilotKit's chat controls. */
+.button {
   display: inline-block;
   padding: 0.5rem 1rem;
-  border: 1px solid currentColor;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   border-radius: 8px;
   background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
   text-decoration: none;
+}
+
+.button:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .connect {

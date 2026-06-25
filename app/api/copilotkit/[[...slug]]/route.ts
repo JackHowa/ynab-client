@@ -23,14 +23,17 @@ let handler: ((req: Request) => Response | Promise<Response>) | null = null;
 //   1. COPILOTKIT_MODEL override (e.g. "anthropic/claude-sonnet-4.5")
 //   2. ANTHROPIC_API_KEY present -> Claude
 //   3. OPENAI_API_KEY present    -> GPT
+// NOTE: this CopilotKit version passes the model id straight to the AI SDK, so
+// use the AI SDK's dash-form ids (e.g. claude-sonnet-4-6), NOT the dotted
+// "claude-sonnet-4.5" the CopilotKit docs show (Anthropic rejects that string).
 function resolveModel(): { model: string; apiKey?: string } {
   if (process.env.COPILOTKIT_MODEL) return { model: process.env.COPILOTKIT_MODEL };
   if (process.env.ANTHROPIC_API_KEY)
-    return { model: "anthropic/claude-sonnet-4.5", apiKey: process.env.ANTHROPIC_API_KEY };
+    return { model: "anthropic/claude-sonnet-4-6", apiKey: process.env.ANTHROPIC_API_KEY };
   if (process.env.OPENAI_API_KEY)
     return { model: "openai/gpt-4o-mini", apiKey: process.env.OPENAI_API_KEY };
   // No key set: still construct (build-safe); runs will error until a key exists.
-  return { model: "anthropic/claude-sonnet-4.5" };
+  return { model: "anthropic/claude-sonnet-4-6" };
 }
 
 function getHandler() {

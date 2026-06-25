@@ -102,6 +102,20 @@ References (example sources to mirror):
       agent assembles), so it isn't limited to the few components we pre-build.
       Builds directly on Phase 4.
 
+## Phase 9 — Bring-your-own key & model (don't foot everyone's bill)
+
+So each user pays for their own LLM usage instead of the app owner.
+
+- [ ] Settings UI to enter an **Anthropic (or other) API key** and pick a
+      **model** (`COPILOTKIT_MODEL`-style). Stored client-side (sessionStorage)
+      and sent to the runtime per-request via a header (like the dynamic-auth
+      `setHeaders` pattern), never committed.
+- [ ] Runtime reads the per-request key/model and builds the agent with it;
+      falls back to the server key only if explicitly allowed (or refuses).
+- [ ] Security: treat the user's key like the YNAB token — server-side only in
+      transit, never logged, clear on logout. Document the trust model.
+- [ ] Optional: support OpenAI/Google too (model prefix selects the provider).
+
 ## Phase 5 — Polish & deploy
 
 - [ ] Deploy to Vercel; register the prod redirect URI; set encrypted env vars.

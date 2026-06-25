@@ -173,6 +173,55 @@ const getSpendingByCategory = defineTool({
   },
 });
 
+const queryTransactions = defineTool({
+  name: "queryTransactions",
+  description:
+    "List/filter transactions from a budget by payee, category, date, and/or " +
+    "minimum amount. Returns matching transactions + a total. Use for ad-hoc " +
+    "questions like 'transactions over $100 last month' or 'recent groceries'.",
+  parameters: z.object({
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget (name, partial ok). Defaults to most recent."),
+    payee: z.string().optional().describe("Filter by payee substring"),
+    category: z.string().optional().describe("Filter by category substring"),
+    sinceDate: z
+      .string()
+      .optional()
+      .describe("Only transactions on/after this ISO date (YYYY-MM-DD)"),
+    minAmount: z
+      .number()
+      .optional()
+      .describe("Minimum spend amount (major units, absolute)"),
+    limit: z.number().int().min(1).max(100).optional().describe("Max rows (default 50)"),
+  }),
+  execute: async ({ budgetName, payee, category, sinceDate, minAmount, limit }) => {
+    const loaded = await loadData({ budgetName, sinceDate });
+    if ("error" in loaded) return loaded;
+    const { budget, transactions } = loaded;
+    const p = payee?.toLowerCase();
+    const c = category?.toLowerCase();
+    let matches = transactions.filter((t) => t.amount < 0);
+    if (p) matches = matches.filter((t) => (t.payee_name ?? "").toLowerCase().includes(p));
+    if (c) matches = matches.filter((t) => (t.category_name ?? "").toLowerCase().includes(c));
+    if (minAmount != null) matches = matches.filter((t) => -t.amount / 1000 >= minAmount);
+    const total = matches.reduce((s, t) => s + -t.amount, 0);
+    return {
+      budget: budget.name,
+      currency: budget.currency_format?.iso_code ?? "",
+      total: fromMilliunits(total),
+      count: matches.length,
+      transactions: matches.slice(0, limit ?? 50).map((t) => ({
+        date: t.date,
+        payee: t.payee_name,
+        category: t.category_name,
+        amount: fromMilliunits(-t.amount),
+      })),
+    };
+  },
+});
+
 const getSpendingByPayee = defineTool({
   name: "getSpendingByPayee",
   description:
@@ -263,6 +312,7 @@ function getHandler() {
           getSpendingByPayee,
           getSpendingByCategory,
           getBudgetOverview,
+          queryTransactions,
         ],
         prompt:
           "You are a helpful budgeting assistant for YNAB. The user may have " +

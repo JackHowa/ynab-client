@@ -9,8 +9,9 @@ import { handle } from "hono/vercel";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import type { NextRequest } from "next/server";
-import { YnabClient, fromMilliunits } from "@/lib/ynab";
+import { YnabClient, fromMilliunits, type Budget, type Transaction } from "@/lib/ynab";
 import { getValidAccessToken } from "@/lib/server-ynab";
+import { DEMO_BUDGET, DEMO_TRANSACTIONS, filterSince } from "@/lib/demo-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,14 +20,69 @@ export const dynamic = "force-dynamic";
 // execution (tools don't receive the request, so we seed this per-request).
 const tokenStore = new AsyncLocalStorage<string | null>();
 
-async function loadBudgetTransactions(token: string, sinceDate?: string) {
+type LoadResult =
+  | { budget: Budget; transactions: Transaction[] }
+  | { error: string };
+
+// Single data source for the tools: DEMO_MODE -> fabricated data; otherwise the
+// connected YNAB budget. Returns an { error } the agent can relay.
+// budgetName: match a specific budget (partial, case-insensitive). When omitted,
+// uses the most-recently-modified budget (not always budgets[0]).
+async function loadData(opts: {
+  budgetName?: string;
+  sinceDate?: string;
+}): Promise<LoadResult> {
+  if (process.env.DEMO_MODE === "1") {
+    return {
+      budget: DEMO_BUDGET,
+      transactions: filterSince(DEMO_TRANSACTIONS, opts.sinceDate),
+    };
+  }
+  const token = tokenStore.getStore();
+  if (!token)
+    return {
+      error:
+        "Not connected to YNAB. Ask the user to connect their account on the home page (or enable DEMO_MODE).",
+    };
   const ynab = new YnabClient(token);
   const budgets = await ynab.getBudgets();
-  if (budgets.length === 0) return null;
-  const budget = budgets[0];
-  const transactions = await ynab.getTransactions(budget.id, sinceDate);
+  if (budgets.length === 0) return { error: "No budgets found." };
+
+  let budget: Budget | undefined;
+  if (opts.budgetName) {
+    const q = opts.budgetName.toLowerCase();
+    budget = budgets.find((b) => b.name.toLowerCase().includes(q));
+    if (!budget)
+      return {
+        error: `No budget matching "${opts.budgetName}". Available: ${budgets
+          .map((b) => b.name)
+          .join(", ")}.`,
+      };
+  } else {
+    budget = [...budgets].sort((a, b) =>
+      (b.last_modified_on ?? "").localeCompare(a.last_modified_on ?? ""),
+    )[0];
+  }
+
+  const transactions = await ynab.getTransactions(budget.id, opts.sinceDate);
   return { budget, transactions };
 }
+
+const listBudgets = defineTool({
+  name: "listBudgets",
+  description:
+    "List the user's YNAB budgets by name. Use this to pick the right budget " +
+    "when the user mentions one, or to show what's available.",
+  parameters: z.object({}),
+  execute: async () => {
+    if (process.env.DEMO_MODE === "1") return { budgets: [DEMO_BUDGET.name] };
+    const token = tokenStore.getStore();
+    if (!token) return { error: "Not connected to YNAB." };
+    const ynab = new YnabClient(token);
+    const budgets = await ynab.getBudgets();
+    return { budgets: budgets.map((b) => b.name) };
+  },
+});
 
 const getSpendingByCategory = defineTool({
   name: "getSpendingByCategory",
@@ -35,20 +91,18 @@ const getSpendingByCategory = defineTool({
     "Returns one slice per category. To COMBINE categories (e.g. Dining + " +
     "Coffee), sum the relevant slice values yourself before rendering.",
   parameters: z.object({
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget (name, partial ok). Defaults to most recent."),
     sinceDate: z
       .string()
       .optional()
       .describe("Only include transactions on/after this ISO date (YYYY-MM-DD)"),
   }),
-  execute: async ({ sinceDate }) => {
-    const token = tokenStore.getStore();
-    if (!token)
-      return {
-        error:
-          "Not connected to YNAB. Ask the user to connect their account on the home page.",
-      };
-    const loaded = await loadBudgetTransactions(token, sinceDate);
-    if (!loaded) return { error: "No budgets found." };
+  execute: async ({ budgetName, sinceDate }) => {
+    const loaded = await loadData({ budgetName, sinceDate });
+    if ("error" in loaded) return loaded;
     const { budget, transactions } = loaded;
     const byCategory: Record<string, number> = {};
     for (const t of transactions) {
@@ -75,23 +129,19 @@ const getSpendingByPayee = defineTool({
     payee: z
       .string()
       .describe("Merchant/payee name to match (case-insensitive substring)"),
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget (name, partial ok). Defaults to most recent."),
     sinceDate: z
       .string()
       .optional()
       .describe("Only include transactions on/after this ISO date (YYYY-MM-DD)"),
   }),
-  execute: async ({ payee, sinceDate }) => {
-    const token = tokenStore.getStore();
-    if (!token)
-      return {
-        error:
-          "Not connected to YNAB. Ask the user to connect their account on the home page.",
-      };
-    const ynab = new YnabClient(token);
-    const budgets = await ynab.getBudgets();
-    if (budgets.length === 0) return { error: "No budgets found." };
-    const budget = budgets[0];
-    const txns = await ynab.getTransactions(budget.id, sinceDate);
+  execute: async ({ payee, budgetName, sinceDate }) => {
+    const loaded = await loadData({ budgetName, sinceDate });
+    if ("error" in loaded) return loaded;
+    const { budget, transactions: txns } = loaded;
     const q = payee.toLowerCase();
     const matches = txns.filter(
       (t) => t.amount < 0 && (t.payee_name ?? "").toLowerCase().includes(q),
@@ -155,9 +205,11 @@ function getHandler() {
         model,
         apiKey,
         maxSteps: 5,
-        tools: [getSpendingByPayee, getSpendingByCategory],
+        tools: [listBudgets, getSpendingByPayee, getSpendingByCategory],
         prompt:
-          "You are a helpful budgeting assistant for YNAB. To answer questions " +
+          "You are a helpful budgeting assistant for YNAB. The user may have " +
+          "multiple budgets; if they mention one by name, pass it as budgetName, " +
+          "and use listBudgets to discover names. To answer questions " +
           "about spending at a merchant, call getSpendingByPayee, then render " +
           "the spendOverTimeChart component using its `byMonth` array as " +
           "`points` and its `currency`, and give a short summary of the total. " +

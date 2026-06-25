@@ -72,3 +72,61 @@ button {
   padding: 1rem;
   border-radius: 8px;
 }
+
+/* Chat page */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.chat-hint {
+  color: color-mix(in srgb, currentColor 65%, transparent);
+  margin-top: 0;
+}
+
+.chat-window {
+  flex: 1;
+  min-height: 420px;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Generative UI components (rendered by the agent) */
+.gen-card {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 12px;
+  padding: 1rem;
+  margin: 0.5rem 0;
+  background: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.gen-card-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.gen-rows,
+.gen-total {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.gen-rows li,
+.gen-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+}
+
+.gen-total {
+  margin-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  font-weight: 600;
+}
+
+.gen-empty {
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}

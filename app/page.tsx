@@ -67,11 +67,16 @@ export default function Home() {
     <main>
       <header>
         <h1>YNAB Budgets</h1>
-        {state.status === "ready" && (
-          <form method="POST" action="/api/auth/logout">
-            <button type="submit">Log out</button>
-          </form>
-        )}
+        <nav style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <a className="button" href="/chat">
+            AI Assistant
+          </a>
+          {state.status === "ready" && (
+            <form method="POST" action="/api/auth/logout">
+              <button type="submit">Log out</button>
+            </form>
+          )}
+        </nav>
       </header>
 
       {state.status === "loading" && <p>Loading…</p>}

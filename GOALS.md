@@ -14,6 +14,21 @@ data.
 - ✅ Encrypted httpOnly session cookie; tokens stay server-side; auto-refresh.
 - ✅ Baseline UI: lists budgets + open accounts with balances.
 
+## Target use cases (what the assistant should nail)
+
+1. **Spend-by-payee over time** — "graph what I spent at Panda Express over the
+   last 6 months." Needs transaction-level data + payee filtering + a time-series
+   (line/bar) chart component.
+2. **Combine categories on the fly** — let the user merge/group categories
+   ("treat Dining + Coffee + Takeout as one") for analysis, without changing
+   their actual YNAB setup. Aggregation happens in our layer.
+3. **Generate a plan / category set** — "set up categories for a trip to Norway"
+   → the agent proposes a structured budget (categories + suggested amounts) and
+   renders it as an editable plan card.
+   - Read-only today: present it as a **suggestion** in the UI. Actually writing
+     categories back to YNAB would require a write OAuth scope — a deliberate,
+     later opt-in (see guardrails).
+
 ## Phase 1 — Data layer
 
 Expand the typed YNAB client + API routes so the agent has something rich to
@@ -65,6 +80,18 @@ Example targets:
 - [ ] Loading/empty/error states for every generative component.
 - [ ] Respect YNAB rate limits (200 req/hr/token) — cache aggregates per request.
 - [ ] Optional: budget switcher, date-range picker, dark-mode polish.
+
+## Phase 6 — Demo / fake-data mode (do last)
+
+So the app can be demoed **without exposing real personal YNAB data**.
+
+- [ ] A `DEMO_MODE` (env flag) or `/demo` route that serves a realistic but
+      **fabricated** budget: a couple of budgets, plausible accounts/balances,
+      category spending, and a few months of transactions.
+- [ ] Wire it behind the same data layer (`lib/server-ynab` / API routes) so the
+      generative-UI components and the agent render identically to real data —
+      just sourced from a fixture instead of the YNAB API.
+- [ ] Make it the default for screenshots/recordings; never ship real balances.
 
 ## Guardrails / principles
 

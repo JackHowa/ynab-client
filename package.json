@@ -9,17 +9,27 @@
     "start": "next start",
     "lint": "next lint"
   },
-  "keywords": ["ynab", "api", "budget", "nextjs", "react"],
+  "keywords": [
+    "ynab",
+    "api",
+    "budget",
+    "nextjs",
+    "react"
+  ],
   "license": "MIT",
   "dependencies": {
+    "@copilotkit/react-core": "^1.61.1",
+    "@copilotkit/runtime": "^1.61.1",
+    "hono": "^4.12.27",
     "next": "^15.1.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "recharts": "^3.9.0"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.5.0"
   }
 }

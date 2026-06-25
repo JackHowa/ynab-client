@@ -1,55 +1,111 @@
-import { ynabFromEnv, fromMilliunits } from "@/lib/ynab";
+"use client";
 
-// Server Component: fetches YNAB data on the server so the token never
-// reaches the browser. Rendered fresh on each request.
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
 
-export default async function Home() {
-  let content;
+interface Account {
+  id: string;
+  name: string;
+  balance: number;
+}
+interface Budget {
+  id: string;
+  name: string;
+  currency: string;
+  accounts: Account[];
+}
 
-  try {
-    const ynab = ynabFromEnv();
-    const budgets = await ynab.getBudgets();
+type State =
+  | { status: "loading" }
+  | { status: "loggedOut" }
+  | { status: "error"; message: string }
+  | { status: "ready"; budgets: Budget[] };
 
-    const withAccounts = await Promise.all(
-      budgets.map(async (budget) => ({
-        budget,
-        accounts: (await ynab.getAccounts(budget.id)).filter((a) => !a.closed),
-      })),
-    );
+export default function Home() {
+  const [state, setState] = useState<State>({ status: "loading" });
 
-    content = (
-      <ul className="budgets">
-        {withAccounts.map(({ budget, accounts }) => (
-          <li key={budget.id} className="budget">
-            <h2>{budget.name}</h2>
-            <ul>
-              {accounts.map((account) => {
-                const code = budget.currency_format?.iso_code ?? "";
-                return (
-                  <li key={account.id}>
-                    <span>{account.name}</span>
-                    <span>
-                      {fromMilliunits(account.balance).toFixed(2)} {code}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </li>
-        ))}
-      </ul>
-    );
-  } catch (err) {
-    content = (
-      <p className="error">{err instanceof Error ? err.message : String(err)}</p>
-    );
-  }
+  useEffect(() => {
+    async function loadBudgets() {
+      const res = await fetch("/api/budgets");
+      if (res.status === 401) return setState({ status: "loggedOut" });
+      const body = await res.json();
+      if (!res.ok) {
+        return setState({ status: "error", message: body.error ?? "Request failed" });
+      }
+      setState({ status: "ready", budgets: body.budgets });
+    }
+
+    async function run() {
+      const params = new URLSearchParams(window.location.search);
+      const oauthError = params.get("error");
+      const code = params.get("code");
+      const stateParam = params.get("state");
+
+      // YNAB redirects back to "/" with ?code & ?state — finish the exchange.
+      if (code && stateParam) {
+        const res = await fetch("/api/auth/exchange", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, state: stateParam }),
+        });
+        window.history.replaceState({}, "", "/"); // strip code from the URL
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          return setState({ status: "error", message: body.error ?? "Login failed" });
+        }
+      } else if (oauthError) {
+        window.history.replaceState({}, "", "/");
+        return setState({ status: "error", message: oauthError });
+      }
+
+      await loadBudgets();
+    }
+
+    run().catch((err) => setState({ status: "error", message: String(err) }));
+  }, []);
 
   return (
     <main>
-      <h1>YNAB Budgets</h1>
-      {content}
+      <header>
+        <h1>YNAB Budgets</h1>
+        {state.status === "ready" && (
+          <form method="POST" action="/api/auth/logout">
+            <button type="submit">Log out</button>
+          </form>
+        )}
+      </header>
+
+      {state.status === "loading" && <p>Loading…</p>}
+
+      {state.status === "loggedOut" && (
+        <div className="connect">
+          <p>Connect your YNAB account to view your budgets (read-only).</p>
+          <a className="button" href="/api/auth/login">
+            Connect to YNAB
+          </a>
+        </div>
+      )}
+
+      {state.status === "error" && <p className="error">{state.message}</p>}
+
+      {state.status === "ready" && (
+        <ul className="budgets">
+          {state.budgets.map((budget) => (
+            <li key={budget.id} className="budget">
+              <h2>{budget.name}</h2>
+              <ul>
+                {budget.accounts.map((account) => (
+                  <li key={account.id}>
+                    <span>{account.name}</span>
+                    <span>
+                      {account.balance.toFixed(2)} {budget.currency}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }

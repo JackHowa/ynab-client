@@ -14,8 +14,34 @@ main {
   margin: 0 auto;
 }
 
-h1 {
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 1.5rem;
+}
+
+h1 {
+  margin: 0;
+}
+
+.button,
+button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.connect {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
 }
 
 .budgets {

@@ -80,6 +80,26 @@ export class YnabClient {
     );
     return data.accounts;
   }
+
+  /** GET /budgets/{budget_id}/transactions — optionally since an ISO date. */
+  async getTransactions(
+    budgetId: string,
+    sinceDate?: string,
+  ): Promise<Transaction[]> {
+    const q = sinceDate ? `?since_date=${encodeURIComponent(sinceDate)}` : "";
+    const data = await this.request<{ transactions: Transaction[] }>(
+      `/budgets/${encodeURIComponent(budgetId)}/transactions${q}`,
+    );
+    return data.transactions;
+  }
+}
+
+export interface Transaction {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number; // milliunits; negative = outflow (spending)
+  payee_name: string | null;
+  category_name: string | null;
 }
 
 /** Convert YNAB milliunits to a major-currency number (e.g. 1234560 -> 1234.56). */

@@ -2,13 +2,73 @@ import {
   CopilotRuntime,
   BuiltInAgent,
   InMemoryAgentRunner,
+  defineTool,
   createCopilotHonoHandler,
 } from "@copilotkit/runtime/v2";
 import { handle } from "hono/vercel";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { z } from "zod";
 import type { NextRequest } from "next/server";
+import { YnabClient, fromMilliunits } from "@/lib/ynab";
+import { getValidAccessToken } from "@/lib/server-ynab";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Carries the current request's YNAB access token into server-side tool
+// execution (tools don't receive the request, so we seed this per-request).
+const tokenStore = new AsyncLocalStorage<string | null>();
+
+const getSpendingByPayee = defineTool({
+  name: "getSpendingByPayee",
+  description:
+    "How much the user has spent at a given payee/merchant (e.g. 'Panda " +
+    "Express'), with a monthly breakdown. Reads their connected YNAB budget.",
+  parameters: z.object({
+    payee: z
+      .string()
+      .describe("Merchant/payee name to match (case-insensitive substring)"),
+    sinceDate: z
+      .string()
+      .optional()
+      .describe("Only include transactions on/after this ISO date (YYYY-MM-DD)"),
+  }),
+  execute: async ({ payee, sinceDate }) => {
+    const token = tokenStore.getStore();
+    if (!token)
+      return {
+        error:
+          "Not connected to YNAB. Ask the user to connect their account on the home page.",
+      };
+    const ynab = new YnabClient(token);
+    const budgets = await ynab.getBudgets();
+    if (budgets.length === 0) return { error: "No budgets found." };
+    const budget = budgets[0];
+    const txns = await ynab.getTransactions(budget.id, sinceDate);
+    const q = payee.toLowerCase();
+    const matches = txns.filter(
+      (t) => t.amount < 0 && (t.payee_name ?? "").toLowerCase().includes(q),
+    );
+    const byMonth: Record<string, number> = {};
+    let total = 0;
+    for (const t of matches) {
+      const spent = -t.amount;
+      total += spent;
+      const month = t.date.slice(0, 7);
+      byMonth[month] = (byMonth[month] ?? 0) + spent;
+    }
+    return {
+      payee,
+      budget: budget.name,
+      currency: budget.currency_format?.iso_code ?? "",
+      total: fromMilliunits(total),
+      transactionCount: matches.length,
+      byMonth: Object.entries(byMonth)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, amount]) => ({ month, amount: fromMilliunits(amount) })),
+    };
+  },
+});
 
 // SSE runtime with in-memory threads. The agent's LLM comes from a provider key.
 // (We tried CopilotKit Intelligence via COPILOT_KIT_SECRET, but thread init
@@ -47,10 +107,14 @@ function getHandler() {
       default: new BuiltInAgent({
         model,
         apiKey,
+        maxSteps: 5,
+        tools: [getSpendingByPayee],
         prompt:
-          "You are a helpful budgeting assistant for YNAB. When the user asks " +
-          "to visualize spending, account balances, categories, or grouped " +
-          "transactions, render the appropriate generative-UI component.",
+          "You are a helpful budgeting assistant for YNAB. Use the " +
+          "getSpendingByPayee tool to answer questions about spending at a " +
+          "merchant. When the user asks to visualize spending, account " +
+          "balances, categories, or grouped transactions, render the " +
+          "appropriate generative-UI component.",
       }),
     },
     runner: new InMemoryAgentRunner(),
@@ -68,8 +132,13 @@ function getHandler() {
 export function GET(req: NextRequest) {
   return getHandler()(req);
 }
-export function POST(req: NextRequest) {
-  return getHandler()(req);
+export async function POST(req: NextRequest) {
+  // Read the YNAB token here (route-handler scope can access cookies), then
+  // make it available to tool execution via AsyncLocalStorage.
+  const token = await getValidAccessToken();
+  return tokenStore.run(token, () => getHandler()(req)) as
+    | Response
+    | Promise<Response>;
 }
 export function PATCH(req: NextRequest) {
   return getHandler()(req);

@@ -12,7 +12,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        {/* COPILOT_KIT_SECRET is the CopilotKit public key (ck_pub_…); read it
+            server-side and pass to the client provider as publicLicenseKey. */}
+        <Providers publicLicenseKey={process.env.COPILOT_KIT_SECRET}>
+          {children}
+        </Providers>
       </body>
     </html>
   );

@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 import { YnabClient, fromMilliunits, type Budget, type Transaction } from "@/lib/ynab";
 import { getValidAccessToken } from "@/lib/server-ynab";
+import { CHAT_MODES } from "@/lib/modes";
 import {
   DEMO_BUDGET,
   DEMO_TRANSACTIONS,
@@ -409,39 +410,45 @@ function getHandler() {
 
   const { model, apiKey } = resolveModel();
 
-  const copilotRuntime = new CopilotRuntime({
-    agents: {
-      default: new BuiltInAgent({
+  const TOOLS = [
+    listBudgets,
+    getSpendingByPayee,
+    getSpendingByCategory,
+    getBudgetOverview,
+    queryTransactions,
+    getCategoryBudgets,
+    getMonthSummary,
+  ];
+
+  const BASE_PROMPT =
+    "You are a budgeting assistant for YNAB. The user may have multiple " +
+    "budgets; if they mention one by name, pass it as budgetName, and use " +
+    "listBudgets to discover names. To answer questions about spending at a " +
+    "merchant, call getSpendingByPayee, then render the spendOverTimeChart " +
+    "component using its `byMonth` array as `points` and its `currency`. For a " +
+    "category breakdown, call getSpendingByCategory, then render categoryPieChart " +
+    "with its `slices` (to combine categories, sum the relevant slices first). " +
+    "For account balances, call getBudgetOverview then render budgetCard. For " +
+    "budget-vs-actual use getCategoryBudgets; for 'how's this month' use " +
+    "getMonthSummary. To plan a trip or goal, render planCard (a suggestion, " +
+    "not written to YNAB).";
+
+  // One agent per selectable mode/personality. The frontend picks via agentId.
+  const agents = Object.fromEntries(
+    CHAT_MODES.map((m) => [
+      m.id,
+      new BuiltInAgent({
         model,
         apiKey,
         maxSteps: 5,
-        tools: [
-          listBudgets,
-          getSpendingByPayee,
-          getSpendingByCategory,
-          getBudgetOverview,
-          queryTransactions,
-          getCategoryBudgets,
-          getMonthSummary,
-        ],
-        prompt:
-          "You are a helpful budgeting assistant for YNAB. The user may have " +
-          "multiple budgets; if they mention one by name, pass it as budgetName, " +
-          "and use listBudgets to discover names. To answer questions " +
-          "about spending at a merchant, call getSpendingByPayee, then render " +
-          "the spendOverTimeChart component using its `byMonth` array as " +
-          "`points` and its `currency`, and give a short summary of the total. " +
-          "For a category breakdown, call getSpendingByCategory, then render " +
-          "categoryPieChart with its `slices` (if the user asks to combine " +
-          "categories, sum the relevant slices first). For account balances or " +
-          "budget overviews, call getBudgetOverview then render budgetCard with " +
-          "its `accounts` and `currency`. For budget-vs-actual questions use " +
-          "getCategoryBudgets; for 'how's this month' use getMonthSummary. " +
-          "When the user wants to plan a " +
-          "trip or savings goal, generate sensible categories with suggested " +
-          "amounts and render planCard (a suggestion, not written to YNAB).",
+        tools: TOOLS,
+        prompt: `${BASE_PROMPT}\n\nPERSONA — answer in this voice: ${m.persona}`,
       }),
-    },
+    ]),
+  );
+
+  const copilotRuntime = new CopilotRuntime({
+    agents,
     runner: new InMemoryAgentRunner(),
     // Enable A2UI so the agent can compose open-ended declarative UI (beyond
     // the registered components). /info advertises A2UI; the client renderer

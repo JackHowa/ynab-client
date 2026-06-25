@@ -1,6 +1,7 @@
 # dependencies
 /node_modules
-
+# just so i don't have to manage different npm states
+package-lock.json
 # next.js
 /.next/
 /out/

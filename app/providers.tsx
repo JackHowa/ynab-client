@@ -13,6 +13,7 @@ export function Providers({ children }: { children: ReactNode }) {
       runtimeUrl="/api/copilotkit"
       credentials="include"
       useSingleEndpoint={false}
+      a2ui={{ theme: { colors: { primary: "#3b82f6" } } }}
       onError={(event) => {
         // Surfaces runtime/CORS/config errors instead of a stuck "connecting…".
         console.error("[copilotkit]", event);

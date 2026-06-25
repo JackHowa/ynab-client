@@ -281,6 +281,10 @@ function getHandler() {
       }),
     },
     runner: new InMemoryAgentRunner(),
+    // Enable A2UI so the agent can compose open-ended declarative UI (beyond
+    // the registered components). /info advertises A2UI; the client renderer
+    // auto-mounts when the provider sets the a2ui prop.
+    a2ui: {},
   });
 
   const app = createCopilotHonoHandler({

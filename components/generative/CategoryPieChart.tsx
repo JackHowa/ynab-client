@@ -39,8 +39,21 @@ const COLORS = [
   "#84cc16",
 ];
 
+const TOP_N = 8;
+
 export function CategoryPieChart({ title, slices }: CategoryPieChartProps) {
-  const data = (slices ?? []).filter((s) => s.value > 0);
+  const positive = (slices ?? []).filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+  // Cap to the top categories and roll the rest into "Other" so labels stay legible.
+  const data =
+    positive.length > TOP_N
+      ? [
+          ...positive.slice(0, TOP_N),
+          {
+            name: "Other",
+            value: positive.slice(TOP_N).reduce((s, x) => s + x.value, 0),
+          },
+        ]
+      : positive;
 
   return (
     <div className="gen-card">
@@ -58,7 +71,6 @@ export function CategoryPieChart({ title, slices }: CategoryPieChartProps) {
                 cx="50%"
                 cy="50%"
                 outerRadius={90}
-                label={(entry) => entry.name}
               >
                 {data.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />

@@ -96,6 +96,23 @@ h1 {
   margin-top: 0;
 }
 
+.chat-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.mode-select {
+  font: inherit;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+}
+
 .chat-window {
   flex: 1;
   min-height: 420px;

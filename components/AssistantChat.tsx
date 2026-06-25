@@ -17,6 +17,7 @@ import {
 } from "@/components/generative/SpendOverTimeChart";
 import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
 import { Pinnable } from "@/components/Pinnable";
+import { CHAT_MODES, DEFAULT_MODE } from "@/lib/modes";
 
 // Render components are registered as frontend tools that return a small ack
 // result (not render-only): a render-only tool emits a tool call with no
@@ -25,10 +26,11 @@ import { Pinnable } from "@/components/Pinnable";
 // conversation history valid across turns.
 const ack = async () => ({ ok: true });
 
-/** The assistant chat with all generative-UI components registered. */
+/** The assistant chat with all generative-UI components + mode switching. */
 export function AssistantChat() {
   // Match CopilotKit's chat theme to the system color scheme.
   const [isDark, setIsDark] = useState(false);
+  const [mode, setMode] = useState(DEFAULT_MODE);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => setIsDark(mq.matches);
@@ -110,8 +112,27 @@ export function AssistantChat() {
   });
 
   return (
-    <div className={`chat-window${isDark ? " dark" : ""}`}>
-      <CopilotChat />
-    </div>
+    <>
+      <div className="chat-toolbar">
+        <label>
+          Mode:{" "}
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            className="mode-select"
+          >
+            {CHAT_MODES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className={`chat-window${isDark ? " dark" : ""}`}>
+        {/* agentId switches the persona; tools are shared across agents. */}
+        <CopilotChat agentId={mode} />
+      </div>
+    </>
   );
 }

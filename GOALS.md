@@ -86,6 +86,22 @@ References (example sources to mirror):
 - OpenGenerativeUI: <https://github.com/CopilotKit/OpenGenerativeUI>
 - `a2ui-renderer` skill (installed locally) + DeepLearning.AI Lesson 4.
 
+## Phase 7 — Saved dashboard & chat history
+
+- [ ] **Save charts to a dashboard** — let the user pin any generated chart/card
+      to a persistent dashboard view.
+- [ ] **Chat history over time** — persist conversations so the user can revisit
+      what they asked and the charts produced. (CopilotKit Intelligence durable
+      threads would back this once a `publicLicenseKey` is configured; otherwise
+      a small local/DB store.)
+
+## Phase 8 — Open-ended generated components
+
+- [ ] Beyond the registered (controlled) components, let the model compose
+      **open-ended** UI via A2UI / OpenGenerativeUI (a catalog of primitives the
+      agent assembles), so it isn't limited to the few components we pre-build.
+      Builds directly on Phase 4.
+
 ## Phase 5 — Polish & deploy
 
 - [ ] Deploy to Vercel; register the prod redirect URI; set encrypted env vars.

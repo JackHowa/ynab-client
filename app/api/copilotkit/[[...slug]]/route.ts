@@ -1,6 +1,7 @@
 import {
   CopilotRuntime,
   CopilotKitIntelligence,
+  BuiltInAgent,
   createCopilotHonoHandler,
 } from "@copilotkit/runtime/v2";
 import { handle } from "hono/vercel";
@@ -31,10 +32,20 @@ function getHandler() {
     apiKey,
   });
 
+  // The frontend's useAgent("default") requires a registered "default" agent.
+  // BuiltInAgent provides the LLM; model is configurable and resolves its
+  // provider key from env (e.g. openai/* -> OPENAI_API_KEY). Intelligence adds
+  // durable threads on top (billed to the CopilotKit secret's quota).
   const copilotRuntime = new CopilotRuntime({
-    // The Intelligence cloud runs the agent; generative-UI components are
-    // registered on the frontend via useComponent and exposed as tools.
-    agents: {} as never,
+    agents: {
+      default: new BuiltInAgent({
+        model: process.env.COPILOTKIT_MODEL ?? "openai/gpt-4o-mini",
+        prompt:
+          "You are a helpful budgeting assistant for YNAB. When the user asks " +
+          "to visualize spending, account balances, categories, or grouped " +
+          "transactions, render the appropriate generative-UI component.",
+      }),
+    },
     intelligence,
     identifyUser: (request: Request) => {
       const id = request.headers.get("x-user-id") ?? "anonymous";

@@ -68,11 +68,23 @@ Example targets:
 - *"How's my checking account?"* → `AccountBalanceCard`
 - *"Am I trending up on dining?"* → `SpendingTrendLineChart`
 
-## Phase 4 — Declarative Generative UI (stretch)
+## Phase 4 — Declarative Generative UI (OpenGenerativeUI / A2UI) — PRIORITY
 
-- [ ] Move from individually-registered components to a **catalog of building
-      blocks** the agent composes into layouts (A2UI / declarative spectrum),
-      for multi-widget dashboards in one response.
+Move to CopilotKit's **declarative generative UI** so the agent emits pretty,
+composed surfaces (cards + charts) rather than us pre-registering each one.
+
+- [ ] Enable A2UI: `CopilotRuntime({ a2ui: {} })` + `<CopilotKit a2ui={{ theme }}>`
+      (renderer auto-mounts via `/info`; `createA2UIMessageRenderer` from
+      `@copilotkit/react-core/v2`, primitives from `@copilotkit/a2ui-renderer`).
+- [ ] Build a **catalog** of polished building blocks: stat cards, a category
+      **pie/bar chart**, and a **transaction-grouping** chart (group by payee or
+      merged categories) — the headline asks.
+- [ ] Make them visually strong (theme, spacing, color) — "make it pretty."
+
+References (example sources to mirror):
+- CopilotKit declarative gen UI examples: <https://github.com/CopilotKit/generative-ui>
+- OpenGenerativeUI: <https://github.com/CopilotKit/OpenGenerativeUI>
+- `a2ui-renderer` skill (installed locally) + DeepLearning.AI Lesson 4.
 
 ## Phase 5 — Polish & deploy
 

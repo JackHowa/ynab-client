@@ -19,6 +19,53 @@ export const dynamic = "force-dynamic";
 // execution (tools don't receive the request, so we seed this per-request).
 const tokenStore = new AsyncLocalStorage<string | null>();
 
+async function loadBudgetTransactions(token: string, sinceDate?: string) {
+  const ynab = new YnabClient(token);
+  const budgets = await ynab.getBudgets();
+  if (budgets.length === 0) return null;
+  const budget = budgets[0];
+  const transactions = await ynab.getTransactions(budget.id, sinceDate);
+  return { budget, transactions };
+}
+
+const getSpendingByCategory = defineTool({
+  name: "getSpendingByCategory",
+  description:
+    "Total spending grouped by category from the user's connected YNAB budget. " +
+    "Returns one slice per category. To COMBINE categories (e.g. Dining + " +
+    "Coffee), sum the relevant slice values yourself before rendering.",
+  parameters: z.object({
+    sinceDate: z
+      .string()
+      .optional()
+      .describe("Only include transactions on/after this ISO date (YYYY-MM-DD)"),
+  }),
+  execute: async ({ sinceDate }) => {
+    const token = tokenStore.getStore();
+    if (!token)
+      return {
+        error:
+          "Not connected to YNAB. Ask the user to connect their account on the home page.",
+      };
+    const loaded = await loadBudgetTransactions(token, sinceDate);
+    if (!loaded) return { error: "No budgets found." };
+    const { budget, transactions } = loaded;
+    const byCategory: Record<string, number> = {};
+    for (const t of transactions) {
+      if (t.amount >= 0) continue; // outflows only
+      const name = t.category_name ?? "Uncategorized";
+      byCategory[name] = (byCategory[name] ?? 0) + -t.amount;
+    }
+    return {
+      budget: budget.name,
+      currency: budget.currency_format?.iso_code ?? "",
+      slices: Object.entries(byCategory)
+        .map(([name, amount]) => ({ name, value: fromMilliunits(amount) }))
+        .sort((a, b) => b.value - a.value),
+    };
+  },
+});
+
 const getSpendingByPayee = defineTool({
   name: "getSpendingByPayee",
   description:
@@ -108,14 +155,16 @@ function getHandler() {
         model,
         apiKey,
         maxSteps: 5,
-        tools: [getSpendingByPayee],
+        tools: [getSpendingByPayee, getSpendingByCategory],
         prompt:
           "You are a helpful budgeting assistant for YNAB. To answer questions " +
           "about spending at a merchant, call getSpendingByPayee, then render " +
           "the spendOverTimeChart component using its `byMonth` array as " +
           "`points` and its `currency`, and give a short summary of the total. " +
-          "For account balances or budget overviews, render budgetCard; for a " +
-          "category breakdown, render categoryPieChart.",
+          "For a category breakdown, call getSpendingByCategory, then render " +
+          "categoryPieChart with its `slices` (if the user asks to combine " +
+          "categories, sum the relevant slices first). For account balances or " +
+          "budget overviews, render budgetCard.",
       }),
     },
     runner: new InMemoryAgentRunner(),

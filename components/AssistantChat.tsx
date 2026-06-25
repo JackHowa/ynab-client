@@ -16,6 +16,7 @@ import {
   SpendOverTimeChartProps,
 } from "@/components/generative/SpendOverTimeChart";
 import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
+import { Pinnable } from "@/components/Pinnable";
 
 // Render components are registered as frontend tools that return a small ack
 // result (not render-only): a render-only tool emits a tool call with no
@@ -60,7 +61,11 @@ export function AssistantChat() {
       "getSpendingByPayee — pass its `byMonth` array as `points` and its `currency`.",
     parameters: SpendOverTimeChartProps,
     handler: ack,
-    render: ({ args }) => <SpendOverTimeChart {...(args as SpendOverTimeChartProps)} />,
+    render: ({ args }) => (
+      <Pinnable name="spendOverTimeChart" args={args as Record<string, unknown>}>
+        <SpendOverTimeChart {...(args as SpendOverTimeChartProps)} />
+      </Pinnable>
+    ),
   });
 
   useFrontendTool({
@@ -70,7 +75,11 @@ export function AssistantChat() {
       "getSpendingByCategory; pass its `slices`.",
     parameters: CategoryPieChartProps,
     handler: ack,
-    render: ({ args }) => <CategoryPieChart {...(args as CategoryPieChartProps)} />,
+    render: ({ args }) => (
+      <Pinnable name="categoryPieChart" args={args as Record<string, unknown>}>
+        <CategoryPieChart {...(args as CategoryPieChartProps)} />
+      </Pinnable>
+    ),
   });
 
   useFrontendTool({
@@ -80,7 +89,11 @@ export function AssistantChat() {
       "trip, e.g. 'plan a trip to Norway'. A suggestion only (not written to YNAB).",
     parameters: PlanCardProps,
     handler: ack,
-    render: ({ args }) => <PlanCard {...(args as PlanCardProps)} />,
+    render: ({ args }) => (
+      <Pinnable name="planCard" args={args as Record<string, unknown>}>
+        <PlanCard {...(args as PlanCardProps)} />
+      </Pinnable>
+    ),
   });
 
   useFrontendTool({
@@ -89,7 +102,11 @@ export function AssistantChat() {
       "A budget's accounts and balances with a total. Use after getBudgetOverview.",
     parameters: BudgetCardProps,
     handler: ack,
-    render: ({ args }) => <BudgetCard {...(args as BudgetCardProps)} />,
+    render: ({ args }) => (
+      <Pinnable name="budgetCard" args={args as Record<string, unknown>}>
+        <BudgetCard {...(args as BudgetCardProps)} />
+      </Pinnable>
+    ),
   });
 
   return (

@@ -58,6 +58,9 @@ export default function Home() {
       <header>
         <h1>YNAB Assistant</h1>
         <nav style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <a className="button" href="/dashboard">
+            Dashboard
+          </a>
           {auth.status === "ready" ? (
             <form method="POST" action="/api/auth/logout">
               <button type="submit" className="button">

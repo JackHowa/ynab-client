@@ -28,12 +28,13 @@ let handler: ((req: Request) => Response | Promise<Response>) | null = null;
 // "claude-sonnet-4.5" the CopilotKit docs show (Anthropic rejects that string).
 function resolveModel(): { model: string; apiKey?: string } {
   if (process.env.COPILOTKIT_MODEL) return { model: process.env.COPILOTKIT_MODEL };
+  // Haiku 4.5: cheap for testing. Bump to claude-sonnet-4-6 via COPILOTKIT_MODEL.
   if (process.env.ANTHROPIC_API_KEY)
-    return { model: "anthropic/claude-sonnet-4-6", apiKey: process.env.ANTHROPIC_API_KEY };
+    return { model: "anthropic/claude-haiku-4-5", apiKey: process.env.ANTHROPIC_API_KEY };
   if (process.env.OPENAI_API_KEY)
     return { model: "openai/gpt-4o-mini", apiKey: process.env.OPENAI_API_KEY };
   // No key set: still construct (build-safe); runs will error until a key exists.
-  return { model: "anthropic/claude-sonnet-4-6" };
+  return { model: "anthropic/claude-haiku-4-5" };
 }
 
 function getHandler() {

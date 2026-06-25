@@ -81,6 +81,114 @@ function selectBudget(
   return { budget };
 }
 
+// Resolve a connected YnabClient + selected budget (real mode only).
+async function resolveBudget(
+  budgetName?: string,
+): Promise<{ ynab: YnabClient; budget: Budget } | { error: string }> {
+  const token = tokenStore.getStore();
+  if (!token) return { error: "Not connected to YNAB." };
+  const ynab = new YnabClient(token);
+  const budgets = await ynab.getBudgets();
+  if (budgets.length === 0) return { error: "No budgets found." };
+  const selected = selectBudget(budgets, budgetName);
+  if ("error" in selected) return selected;
+  return { ynab, budget: selected.budget };
+}
+
+const getCategoryBudgets = defineTool({
+  name: "getCategoryBudgets",
+  description:
+    "This month's budget per category: budgeted vs spent vs remaining. Use for " +
+    "'am I over on Dining?' or budget-vs-actual questions.",
+  parameters: z.object({
+    budgetName: z.string().optional().describe("Which budget. Defaults to most recent."),
+  }),
+  execute: async ({ budgetName }) => {
+    if (process.env.DEMO_MODE === "1") {
+      const spent: Record<string, number> = {};
+      for (const t of DEMO_TRANSACTIONS) {
+        if (t.amount >= 0) continue;
+        const n = t.category_name ?? "Uncategorized";
+        spent[n] = (spent[n] ?? 0) + -t.amount;
+      }
+      return {
+        budget: DEMO_BUDGET.name,
+        currency: "USD",
+        categories: Object.entries(spent)
+          .map(([name, s]) => {
+            const budgeted = Math.ceil((s * 1.15) / 10000) * 10000;
+            return {
+              name,
+              budgeted: fromMilliunits(budgeted),
+              spent: fromMilliunits(s),
+              remaining: fromMilliunits(budgeted - s),
+            };
+          })
+          .sort((a, b) => b.spent - a.spent),
+      };
+    }
+    const r = await resolveBudget(budgetName);
+    if ("error" in r) return r;
+    const cats = await r.ynab.getCategories(r.budget.id);
+    return {
+      budget: r.budget.name,
+      currency: r.budget.currency_format?.iso_code ?? "",
+      categories: cats.map((c) => ({
+        name: c.name,
+        group: c.category_group_name,
+        budgeted: fromMilliunits(c.budgeted),
+        spent: fromMilliunits(-c.activity),
+        remaining: fromMilliunits(c.balance),
+      })),
+    };
+  },
+});
+
+const getMonthSummary = defineTool({
+  name: "getMonthSummary",
+  description:
+    "Summary for a month: income, budgeted, spent, to-be-budgeted, age of " +
+    "money. Use for 'how's this month looking?'.",
+  parameters: z.object({
+    budgetName: z.string().optional().describe("Which budget. Defaults to most recent."),
+    month: z
+      .string()
+      .optional()
+      .describe("Month as YYYY-MM-01, or 'current' (default)."),
+  }),
+  execute: async ({ budgetName, month }) => {
+    if (process.env.DEMO_MODE === "1") {
+      const latest = "2026-06";
+      const activity = DEMO_TRANSACTIONS.filter((t) => t.date.startsWith(latest)).reduce(
+        (s, t) => s + t.amount,
+        0,
+      );
+      const income = 5200_000;
+      return {
+        month: `${latest}-01`,
+        income: fromMilliunits(income),
+        budgeted: fromMilliunits(-activity),
+        spent: fromMilliunits(-activity),
+        toBeBudgeted: fromMilliunits(income + activity),
+        ageOfMoney: 28,
+        currency: "USD",
+      };
+    }
+    const r = await resolveBudget(budgetName);
+    if ("error" in r) return r;
+    const m = await r.ynab.getMonth(r.budget.id, month ?? "current");
+    return {
+      month: m.month,
+      income: fromMilliunits(m.income),
+      budgeted: fromMilliunits(m.budgeted),
+      spent: fromMilliunits(-m.activity),
+      toBeBudgeted: fromMilliunits(m.to_be_budgeted),
+      ageOfMoney: m.age_of_money,
+      currency: r.budget.currency_format?.iso_code ?? "",
+    };
+  },
+});
+
 const getBudgetOverview = defineTool({
   name: "getBudgetOverview",
   description:
@@ -313,6 +421,8 @@ function getHandler() {
           getSpendingByCategory,
           getBudgetOverview,
           queryTransactions,
+          getCategoryBudgets,
+          getMonthSummary,
         ],
         prompt:
           "You are a helpful budgeting assistant for YNAB. The user may have " +
@@ -325,7 +435,9 @@ function getHandler() {
           "categoryPieChart with its `slices` (if the user asks to combine " +
           "categories, sum the relevant slices first). For account balances or " +
           "budget overviews, call getBudgetOverview then render budgetCard with " +
-          "its `accounts` and `currency`. When the user wants to plan a " +
+          "its `accounts` and `currency`. For budget-vs-actual questions use " +
+          "getCategoryBudgets; for 'how's this month' use getMonthSummary. " +
+          "When the user wants to plan a " +
           "trip or savings goal, generate sensible categories with suggested " +
           "amounts and render planCard (a suggestion, not written to YNAB).",
       }),

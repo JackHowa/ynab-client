@@ -92,6 +92,46 @@ export class YnabClient {
     );
     return data.transactions;
   }
+
+  /** GET /budgets/{budget_id}/categories — flattened, current-month figures. */
+  async getCategories(budgetId: string): Promise<Category[]> {
+    const data = await this.request<{
+      category_groups: { name: string; categories: Category[] }[];
+    }>(`/budgets/${encodeURIComponent(budgetId)}/categories`);
+    return data.category_groups.flatMap((g) =>
+      g.categories
+        .filter((c) => !c.hidden && !c.deleted)
+        .map((c) => ({ ...c, category_group_name: g.name })),
+    );
+  }
+
+  /** GET /budgets/{budget_id}/months/{month} — month summary ("current" ok). */
+  async getMonth(budgetId: string, month = "current"): Promise<MonthDetail> {
+    const data = await this.request<{ month: MonthDetail }>(
+      `/budgets/${encodeURIComponent(budgetId)}/months/${encodeURIComponent(month)}`,
+    );
+    return data.month;
+  }
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  budgeted: number; // milliunits assigned this month
+  activity: number; // milliunits spent (negative)
+  balance: number; // milliunits remaining
+  hidden?: boolean;
+  deleted?: boolean;
+  category_group_name?: string;
+}
+
+export interface MonthDetail {
+  month: string; // YYYY-MM-DD
+  income: number; // milliunits
+  budgeted: number; // milliunits
+  activity: number; // milliunits
+  to_be_budgeted: number; // milliunits
+  age_of_money: number | null;
 }
 
 export interface Transaction {

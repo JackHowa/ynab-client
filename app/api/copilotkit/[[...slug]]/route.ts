@@ -1,7 +1,7 @@
 import {
   CopilotRuntime,
-  CopilotKitIntelligence,
   BuiltInAgent,
+  InMemoryAgentRunner,
   createCopilotHonoHandler,
 } from "@copilotkit/runtime/v2";
 import { handle } from "hono/vercel";
@@ -10,47 +10,46 @@ import type { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// CopilotKit Intelligence (managed cloud) provides the model, so we don't need
-// our own OpenAI/Anthropic key — just the CopilotKit secret as the apiKey.
-//   COPILOT_KIT_SECRET -> Intelligence apiKey
+// SSE runtime with in-memory threads. The agent's LLM comes from a provider key.
+// (We tried CopilotKit Intelligence via COPILOT_KIT_SECRET, but thread init
+// requires a license — "Failed to initialize thread" — so we use the simple,
+// reliable SSE path. Intelligence/durable threads can be revisited later.)
 //
 // Built lazily and cached so a missing env var can't break `next build`
 // (route modules are imported at build time; construction only runs on request).
 let handler: ((req: Request) => Response | Promise<Response>) | null = null;
 
+// Pick the model + provider key. Precedence:
+//   1. COPILOTKIT_MODEL override (e.g. "anthropic/claude-sonnet-4.5")
+//   2. ANTHROPIC_API_KEY present -> Claude
+//   3. OPENAI_API_KEY present    -> GPT
+function resolveModel(): { model: string; apiKey?: string } {
+  if (process.env.COPILOTKIT_MODEL) return { model: process.env.COPILOTKIT_MODEL };
+  if (process.env.ANTHROPIC_API_KEY)
+    return { model: "anthropic/claude-sonnet-4.5", apiKey: process.env.ANTHROPIC_API_KEY };
+  if (process.env.OPENAI_API_KEY)
+    return { model: "openai/gpt-4o-mini", apiKey: process.env.OPENAI_API_KEY };
+  // No key set: still construct (build-safe); runs will error until a key exists.
+  return { model: "anthropic/claude-sonnet-4.5" };
+}
+
 function getHandler() {
   if (handler) return handler;
 
-  const apiKey =
-    process.env.COPILOT_KIT_SECRET ??
-    process.env.COPILOTKIT_INTELLIGENCE_API_KEY ??
-    "";
+  const { model, apiKey } = resolveModel();
 
-  const intelligence = new CopilotKitIntelligence({
-    apiUrl: "https://api.copilotkit.ai",
-    wsUrl: "wss://api.copilotkit.ai",
-    apiKey,
-  });
-
-  // The frontend's useAgent("default") requires a registered "default" agent.
-  // BuiltInAgent provides the LLM; model is configurable and resolves its
-  // provider key from env (e.g. openai/* -> OPENAI_API_KEY). Intelligence adds
-  // durable threads on top (billed to the CopilotKit secret's quota).
   const copilotRuntime = new CopilotRuntime({
     agents: {
       default: new BuiltInAgent({
-        model: process.env.COPILOTKIT_MODEL ?? "openai/gpt-4o-mini",
+        model,
+        apiKey,
         prompt:
           "You are a helpful budgeting assistant for YNAB. When the user asks " +
           "to visualize spending, account balances, categories, or grouped " +
           "transactions, render the appropriate generative-UI component.",
       }),
     },
-    intelligence,
-    identifyUser: (request: Request) => {
-      const id = request.headers.get("x-user-id") ?? "anonymous";
-      return { id, name: id };
-    },
+    runner: new InMemoryAgentRunner(),
   });
 
   const app = createCopilotHonoHandler({

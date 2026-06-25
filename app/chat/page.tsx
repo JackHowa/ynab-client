@@ -11,6 +11,7 @@ import {
   SpendOverTimeChart,
   SpendOverTimeChartProps,
 } from "@/components/generative/SpendOverTimeChart";
+import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
 
 export default function ChatPage() {
   // Match CopilotKit's chat theme to the system color scheme (it uses a `.dark`
@@ -42,6 +43,16 @@ export default function ChatPage() {
       "`currency`. Good for 'how much did I spend at X over time'.",
     parameters: SpendOverTimeChartProps,
     render: SpendOverTimeChart,
+  });
+
+  useComponent({
+    name: "planCard",
+    description:
+      "An editable suggested budget plan (categories + amounts) for a goal or " +
+      "trip, e.g. 'plan a trip to Norway'. Generate sensible categories and " +
+      "amounts and render them here. This is a suggestion only (not written to YNAB).",
+    parameters: PlanCardProps,
+    render: PlanCard,
   });
 
   useComponent({

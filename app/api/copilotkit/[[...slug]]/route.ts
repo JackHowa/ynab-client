@@ -164,7 +164,9 @@ function getHandler() {
           "For a category breakdown, call getSpendingByCategory, then render " +
           "categoryPieChart with its `slices` (if the user asks to combine " +
           "categories, sum the relevant slices first). For account balances or " +
-          "budget overviews, render budgetCard.",
+          "budget overviews, render budgetCard. When the user wants to plan a " +
+          "trip or savings goal, generate sensible categories with suggested " +
+          "amounts and render planCard (a suggestion, not written to YNAB).",
       }),
     },
     runner: new InMemoryAgentRunner(),

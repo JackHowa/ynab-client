@@ -110,11 +110,12 @@ function getHandler() {
         maxSteps: 5,
         tools: [getSpendingByPayee],
         prompt:
-          "You are a helpful budgeting assistant for YNAB. Use the " +
-          "getSpendingByPayee tool to answer questions about spending at a " +
-          "merchant. When the user asks to visualize spending, account " +
-          "balances, categories, or grouped transactions, render the " +
-          "appropriate generative-UI component.",
+          "You are a helpful budgeting assistant for YNAB. To answer questions " +
+          "about spending at a merchant, call getSpendingByPayee, then render " +
+          "the spendOverTimeChart component using its `byMonth` array as " +
+          "`points` and its `currency`, and give a short summary of the total. " +
+          "For account balances or budget overviews, render budgetCard; for a " +
+          "category breakdown, render categoryPieChart.",
       }),
     },
     runner: new InMemoryAgentRunner(),

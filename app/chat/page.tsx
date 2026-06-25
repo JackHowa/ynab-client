@@ -7,6 +7,10 @@ import {
   CategoryPieChartProps,
 } from "@/components/generative/CategoryPieChart";
 import { BudgetCard, BudgetCardProps } from "@/components/generative/BudgetCard";
+import {
+  SpendOverTimeChart,
+  SpendOverTimeChartProps,
+} from "@/components/generative/SpendOverTimeChart";
 
 export default function ChatPage() {
   // Match CopilotKit's chat theme to the system color scheme (it uses a `.dark`
@@ -28,6 +32,16 @@ export default function ChatPage() {
       "Display a breakdown of spending by category as a pie chart. Use when the user asks to visualize where money went, spending distribution, or category breakdowns.",
     parameters: CategoryPieChartProps,
     render: CategoryPieChart,
+  });
+
+  useComponent({
+    name: "spendOverTimeChart",
+    description:
+      "Bar chart of money spent over time (by month). Use after calling " +
+      "getSpendingByPayee — pass its `byMonth` array as `points` and its " +
+      "`currency`. Good for 'how much did I spend at X over time'.",
+    parameters: SpendOverTimeChartProps,
+    render: SpendOverTimeChart,
   });
 
   useComponent({

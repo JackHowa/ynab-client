@@ -11,7 +11,12 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 import { YnabClient, fromMilliunits, type Budget, type Transaction } from "@/lib/ynab";
 import { getValidAccessToken } from "@/lib/server-ynab";
-import { DEMO_BUDGET, DEMO_TRANSACTIONS, filterSince } from "@/lib/demo-data";
+import {
+  DEMO_BUDGET,
+  DEMO_TRANSACTIONS,
+  DEMO_ACCOUNTS,
+  filterSince,
+} from "@/lib/demo-data";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,25 +53,73 @@ async function loadData(opts: {
   const budgets = await ynab.getBudgets();
   if (budgets.length === 0) return { error: "No budgets found." };
 
-  let budget: Budget | undefined;
-  if (opts.budgetName) {
-    const q = opts.budgetName.toLowerCase();
-    budget = budgets.find((b) => b.name.toLowerCase().includes(q));
-    if (!budget)
+  const selected = selectBudget(budgets, opts.budgetName);
+  if ("error" in selected) return selected;
+  const transactions = await ynab.getTransactions(selected.budget.id, opts.sinceDate);
+  return { budget: selected.budget, transactions };
+}
+
+// Choose a budget by name (partial) or default to most-recently modified.
+function selectBudget(
+  budgets: Budget[],
+  budgetName?: string,
+): { budget: Budget } | { error: string } {
+  if (budgetName) {
+    const q = budgetName.toLowerCase();
+    const match = budgets.find((b) => b.name.toLowerCase().includes(q));
+    if (!match)
       return {
-        error: `No budget matching "${opts.budgetName}". Available: ${budgets
+        error: `No budget matching "${budgetName}". Available: ${budgets
           .map((b) => b.name)
           .join(", ")}.`,
       };
-  } else {
-    budget = [...budgets].sort((a, b) =>
-      (b.last_modified_on ?? "").localeCompare(a.last_modified_on ?? ""),
-    )[0];
+    return { budget: match };
   }
-
-  const transactions = await ynab.getTransactions(budget.id, opts.sinceDate);
-  return { budget, transactions };
+  const budget = [...budgets].sort((a, b) =>
+    (b.last_modified_on ?? "").localeCompare(a.last_modified_on ?? ""),
+  )[0];
+  return { budget };
 }
+
+const getBudgetOverview = defineTool({
+  name: "getBudgetOverview",
+  description:
+    "Get a budget's open accounts and balances. Use before rendering " +
+    "budgetCard for account-balance / budget-overview questions.",
+  parameters: z.object({
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget (name, partial ok). Defaults to most recent."),
+  }),
+  execute: async ({ budgetName }) => {
+    if (process.env.DEMO_MODE === "1") {
+      return {
+        budgetName: DEMO_BUDGET.name,
+        currency: DEMO_BUDGET.currency_format?.iso_code ?? "",
+        accounts: DEMO_ACCOUNTS.filter((a) => !a.closed).map((a) => ({
+          name: a.name,
+          balance: fromMilliunits(a.balance),
+        })),
+      };
+    }
+    const token = tokenStore.getStore();
+    if (!token) return { error: "Not connected to YNAB." };
+    const ynab = new YnabClient(token);
+    const budgets = await ynab.getBudgets();
+    if (budgets.length === 0) return { error: "No budgets found." };
+    const selected = selectBudget(budgets, budgetName);
+    if ("error" in selected) return selected;
+    const accounts = await ynab.getAccounts(selected.budget.id);
+    return {
+      budgetName: selected.budget.name,
+      currency: selected.budget.currency_format?.iso_code ?? "",
+      accounts: accounts
+        .filter((a) => !a.closed)
+        .map((a) => ({ name: a.name, balance: fromMilliunits(a.balance) })),
+    };
+  },
+});
 
 const listBudgets = defineTool({
   name: "listBudgets",
@@ -205,7 +258,12 @@ function getHandler() {
         model,
         apiKey,
         maxSteps: 5,
-        tools: [listBudgets, getSpendingByPayee, getSpendingByCategory],
+        tools: [
+          listBudgets,
+          getSpendingByPayee,
+          getSpendingByCategory,
+          getBudgetOverview,
+        ],
         prompt:
           "You are a helpful budgeting assistant for YNAB. The user may have " +
           "multiple budgets; if they mention one by name, pass it as budgetName, " +
@@ -216,7 +274,8 @@ function getHandler() {
           "For a category breakdown, call getSpendingByCategory, then render " +
           "categoryPieChart with its `slices` (if the user asks to combine " +
           "categories, sum the relevant slices first). For account balances or " +
-          "budget overviews, render budgetCard. When the user wants to plan a " +
+          "budget overviews, call getBudgetOverview then render budgetCard with " +
+          "its `accounts` and `currency`. When the user wants to plan a " +
           "trip or savings goal, generate sensible categories with suggested " +
           "amounts and render planCard (a suggestion, not written to YNAB).",
       }),

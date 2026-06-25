@@ -1,5 +1,5 @@
 import "server-only";
-import type { Budget, Transaction } from "./ynab";
+import type { Account, Budget, Transaction } from "./ynab";
 
 // Fabricated data so the assistant can be demoed without a real YNAB account.
 // Enabled when DEMO_MODE=1 (see lib usage in the copilotkit route).
@@ -41,6 +41,12 @@ export const DEMO_TRANSACTIONS: Transaction[] = MONTHS.flatMap((m, i) => [
   t(`nf-${i}`, `${m}-01`, "Netflix", "Subscriptions", 15.49),
   t(`rt-${i}`, `${m}-01`, "Rent", "Housing", 1850),
 ]);
+
+export const DEMO_ACCOUNTS: Account[] = [
+  { id: "a1", name: "Checking", type: "checking", on_budget: true, balance: 4231_000, closed: false },
+  { id: "a2", name: "Savings", type: "savings", on_budget: true, balance: 18750_000, closed: false },
+  { id: "a3", name: "Credit Card", type: "creditCard", on_budget: true, balance: -842_000, closed: false },
+];
 
 export function filterSince(
   txns: Transaction[],

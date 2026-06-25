@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CopilotChat, useComponent } from "@copilotkit/react-core/v2";
+import {
+  CopilotChat,
+  useComponent,
+  useConfigureSuggestions,
+} from "@copilotkit/react-core/v2";
 import {
   CategoryPieChart,
   CategoryPieChartProps,
@@ -24,6 +28,26 @@ export function AssistantChat() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  // Starter prompts shown as clickable pills before the first message.
+  useConfigureSuggestions({
+    available: "before-first-message",
+    suggestions: [
+      {
+        title: "Spending by category",
+        message: "Show my spending by category as a pie chart.",
+      },
+      {
+        title: "A merchant over time",
+        message: "How much have I spent at Panda Express over time?",
+      },
+      { title: "How's this month?", message: "How is this month looking?" },
+      {
+        title: "Plan a trip",
+        message: "Plan a budget for a trip to Norway.",
+      },
+    ],
+  });
 
   useComponent({
     name: "spendOverTimeChart",

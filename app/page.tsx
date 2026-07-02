@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AssistantChat } from "@/components/AssistantChat";
+import { clearByok } from "@/lib/byok";
 
 type Auth =
   | { status: "loading" }
@@ -62,7 +63,11 @@ export default function Home() {
             Dashboard
           </a>
           {auth.status === "ready" ? (
-            <form method="POST" action="/api/auth/logout">
+            <form
+              method="POST"
+              action="/api/auth/logout"
+              onSubmit={() => clearByok()}
+            >
               <button type="submit" className="button">
                 Log out
               </button>

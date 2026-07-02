@@ -13,6 +13,11 @@ import { YnabClient, fromMilliunits, type Budget, type Transaction } from "@/lib
 import { getValidAccessToken } from "@/lib/server-ynab";
 import { CHAT_MODES } from "@/lib/modes";
 import {
+  DEFAULT_BYOK_MODEL,
+  LLM_KEY_HEADER,
+  LLM_MODEL_HEADER,
+} from "@/lib/byok";
+import {
   DEMO_BUDGET,
   DEMO_TRANSACTIONS,
   DEMO_ACCOUNTS,
@@ -383,33 +388,66 @@ const getSpendingByPayee = defineTool({
 // requires a license — "Failed to initialize thread" — so we use the simple,
 // reliable SSE path. Intelligence/durable threads can be revisited later.)
 //
-// Built lazily and cached so a missing env var can't break `next build`
-// (route modules are imported at build time; construction only runs on request).
-let handler: ((req: Request) => Response | Promise<Response>) | null = null;
+// Bring-your-own-key (Phase 9): each request may carry the user's own Anthropic
+// key + model via headers (see lib/byok), so users pay for their own LLM usage.
+// Handlers are therefore built PER (model, apiKey) — a single cached handler
+// would bake in whoever's key arrived first. Cached in a bounded Map so repeated
+// requests from the same user reuse the same runtime. Construction only runs on
+// request (never at build/import), so a missing env var can't break `next build`.
+const MAX_HANDLERS = 25;
+const handlers = new Map<
+  string,
+  (req: Request) => Response | Promise<Response>
+>();
 
 // Pick the model + provider key. Precedence:
-//   1. COPILOTKIT_MODEL override (e.g. "anthropic/claude-sonnet-4.5")
-//   2. ANTHROPIC_API_KEY present -> Claude
-//   3. OPENAI_API_KEY present    -> GPT
+//   1. User's own key from the request header (BYOK) -> user pays
+//   2. Server fallback (unless ALLOW_SERVER_LLM_KEY="0"): COPILOTKIT_MODEL
+//      override, else ANTHROPIC_API_KEY -> Claude, else OPENAI_API_KEY -> GPT
+//   3. No key: still construct (build-safe); runs error until a key exists,
+//      prompting the user to add one in the API-key panel.
 // NOTE: this CopilotKit version passes the model id straight to the AI SDK, so
 // use the AI SDK's dash-form ids (e.g. claude-sonnet-4-6), NOT the dotted
 // "claude-sonnet-4.5" the CopilotKit docs show (Anthropic rejects that string).
-function resolveModel(): { model: string; apiKey?: string } {
-  if (process.env.COPILOTKIT_MODEL) return { model: process.env.COPILOTKIT_MODEL };
-  // Haiku 4.5: cheap for testing. Bump to claude-sonnet-4-6 via COPILOTKIT_MODEL.
-  if (process.env.ANTHROPIC_API_KEY)
-    return { model: "anthropic/claude-haiku-4-5", apiKey: process.env.ANTHROPIC_API_KEY };
-  if (process.env.OPENAI_API_KEY)
-    return { model: "openai/gpt-4o-mini", apiKey: process.env.OPENAI_API_KEY };
-  // No key set: still construct (build-safe); runs will error until a key exists.
-  return { model: "anthropic/claude-haiku-4-5" };
+function resolveModel(req: Request): { model: string; apiKey?: string } {
+  const userKey = req.headers.get(LLM_KEY_HEADER)?.trim();
+  if (userKey) {
+    const userModel = req.headers.get(LLM_MODEL_HEADER)?.trim();
+    return { model: userModel || DEFAULT_BYOK_MODEL, apiKey: userKey };
+  }
+  // Server fallback keeps the deployed app working for users who haven't
+  // supplied a key. Set ALLOW_SERVER_LLM_KEY=0 to require BYOK (strict billing).
+  const allowServerKey = process.env.ALLOW_SERVER_LLM_KEY !== "0";
+  if (allowServerKey) {
+    if (process.env.COPILOTKIT_MODEL) return { model: process.env.COPILOTKIT_MODEL };
+    if (process.env.ANTHROPIC_API_KEY)
+      return { model: DEFAULT_BYOK_MODEL, apiKey: process.env.ANTHROPIC_API_KEY };
+    if (process.env.OPENAI_API_KEY)
+      return { model: "openai/gpt-4o-mini", apiKey: process.env.OPENAI_API_KEY };
+  }
+  // No key available: construct anyway (build-safe); runs will error clearly.
+  return { model: DEFAULT_BYOK_MODEL };
 }
 
-function getHandler() {
-  if (handler) return handler;
+// Resolve the per-request key/model and return a cached handler built for it.
+function handlerFor(req: Request) {
+  const { model, apiKey } = resolveModel(req);
+  // Cache key: model + apiKey. A space can't appear in a model id or API key.
+  const cacheKey = `${model} ${apiKey ?? ""}`;
+  const existing = handlers.get(cacheKey);
+  if (existing) return existing;
 
-  const { model, apiKey } = resolveModel();
+  const built = buildHandler(model, apiKey);
+  // Bound the cache (simple FIFO eviction) so distinct keys can't grow it forever.
+  if (handlers.size >= MAX_HANDLERS) {
+    const oldest = handlers.keys().next().value;
+    if (oldest !== undefined) handlers.delete(oldest);
+  }
+  handlers.set(cacheKey, built);
+  return built;
+}
 
+function buildHandler(model: string, apiKey?: string) {
   const TOOLS = [
     listBudgets,
     getSpendingByPayee,
@@ -461,24 +499,23 @@ function getHandler() {
     basePath: "/api/copilotkit",
   });
 
-  handler = handle(app);
-  return handler;
+  return handle(app);
 }
 
 export function GET(req: NextRequest) {
-  return getHandler()(req);
+  return handlerFor(req)(req);
 }
 export async function POST(req: NextRequest) {
   // Read the YNAB token here (route-handler scope can access cookies), then
   // make it available to tool execution via AsyncLocalStorage.
   const token = await getValidAccessToken();
-  return tokenStore.run(token, () => getHandler()(req)) as
+  return tokenStore.run(token, () => handlerFor(req)(req)) as
     | Response
     | Promise<Response>;
 }
 export function PATCH(req: NextRequest) {
-  return getHandler()(req);
+  return handlerFor(req)(req);
 }
 export function DELETE(req: NextRequest) {
-  return getHandler()(req);
+  return handlerFor(req)(req);
 }

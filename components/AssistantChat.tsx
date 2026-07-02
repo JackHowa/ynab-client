@@ -17,6 +17,7 @@ import {
 } from "@/components/generative/SpendOverTimeChart";
 import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
 import { Pinnable } from "@/components/Pinnable";
+import { ByokSettings } from "@/components/ByokSettings";
 import { CHAT_MODES, DEFAULT_MODE } from "@/lib/modes";
 
 // Render components are registered as frontend tools that return a small ack
@@ -128,6 +129,7 @@ export function AssistantChat() {
             ))}
           </select>
         </label>
+        <ByokSettings />
       </div>
       <div className={`chat-window${isDark ? " dark" : ""}`}>
         {/* agentId switches the persona; tools are shared across agents. */}

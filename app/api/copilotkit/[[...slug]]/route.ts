@@ -35,27 +35,28 @@ type LoadResult =
   | { budget: Budget; transactions: Transaction[] }
   | { error: string };
 
-// Single data source for the tools: DEMO_MODE -> fabricated data; otherwise the
-// connected YNAB budget. Returns an { error } the agent can relay.
+// Demo data is the fallback whenever there's no connected YNAB account (no
+// token) so the assistant is usable immediately, without setup. DEMO_MODE=1
+// forces it even when connected (useful for screenshots/demos).
+function shouldUseDemo(): boolean {
+  return process.env.DEMO_MODE === "1" || !tokenStore.getStore();
+}
+
+// Single data source for the tools: demo -> fabricated data; otherwise the
+// connected YNAB budget.
 // budgetName: match a specific budget (partial, case-insensitive). When omitted,
 // uses the most-recently-modified budget (not always budgets[0]).
 async function loadData(opts: {
   budgetName?: string;
   sinceDate?: string;
 }): Promise<LoadResult> {
-  if (process.env.DEMO_MODE === "1") {
+  if (shouldUseDemo()) {
     return {
       budget: DEMO_BUDGET,
       transactions: filterSince(DEMO_TRANSACTIONS, opts.sinceDate),
     };
   }
-  const token = tokenStore.getStore();
-  if (!token)
-    return {
-      error:
-        "Not connected to YNAB. Ask the user to connect their account on the home page (or enable DEMO_MODE).",
-    };
-  const ynab = new YnabClient(token);
+  const ynab = new YnabClient(tokenStore.getStore()!);
   const budgets = await ynab.getBudgets();
   if (budgets.length === 0) return { error: "No budgets found." };
 
@@ -110,7 +111,7 @@ const getCategoryBudgets = defineTool({
     budgetName: z.string().optional().describe("Which budget. Defaults to most recent."),
   }),
   execute: async ({ budgetName }) => {
-    if (process.env.DEMO_MODE === "1") {
+    if (shouldUseDemo()) {
       const spent: Record<string, number> = {};
       for (const t of DEMO_TRANSACTIONS) {
         if (t.amount >= 0) continue;
@@ -163,7 +164,7 @@ const getMonthSummary = defineTool({
       .describe("Month as YYYY-MM-01, or 'current' (default)."),
   }),
   execute: async ({ budgetName, month }) => {
-    if (process.env.DEMO_MODE === "1") {
+    if (shouldUseDemo()) {
       const latest = "2026-06";
       const activity = DEMO_TRANSACTIONS.filter((t) => t.date.startsWith(latest)).reduce(
         (s, t) => s + t.amount,
@@ -207,7 +208,7 @@ const getBudgetOverview = defineTool({
       .describe("Which budget (name, partial ok). Defaults to most recent."),
   }),
   execute: async ({ budgetName }) => {
-    if (process.env.DEMO_MODE === "1") {
+    if (shouldUseDemo()) {
       return {
         budgetName: DEMO_BUDGET.name,
         currency: DEMO_BUDGET.currency_format?.iso_code ?? "",
@@ -217,9 +218,7 @@ const getBudgetOverview = defineTool({
         })),
       };
     }
-    const token = tokenStore.getStore();
-    if (!token) return { error: "Not connected to YNAB." };
-    const ynab = new YnabClient(token);
+    const ynab = new YnabClient(tokenStore.getStore()!);
     const budgets = await ynab.getBudgets();
     if (budgets.length === 0) return { error: "No budgets found." };
     const selected = selectBudget(budgets, budgetName);
@@ -242,10 +241,8 @@ const listBudgets = defineTool({
     "when the user mentions one, or to show what's available.",
   parameters: z.object({}),
   execute: async () => {
-    if (process.env.DEMO_MODE === "1") return { budgets: [DEMO_BUDGET.name] };
-    const token = tokenStore.getStore();
-    if (!token) return { error: "Not connected to YNAB." };
-    const ynab = new YnabClient(token);
+    if (shouldUseDemo()) return { budgets: [DEMO_BUDGET.name] };
+    const ynab = new YnabClient(tokenStore.getStore()!);
     const budgets = await ynab.getBudgets();
     return { budgets: budgets.map((b) => b.name) };
   },

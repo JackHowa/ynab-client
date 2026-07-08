@@ -4,11 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useCopilotKit } from "@copilotkit/react-core/v2";
 import {
   BYOK_MODELS,
+  ByokConfig,
   DEFAULT_BYOK_MODEL,
   LLM_KEY_HEADER,
   LLM_MODEL_HEADER,
   clearByok,
-  getByok,
   setByok,
 } from "@/lib/byok";
 
@@ -18,6 +18,12 @@ function mask(key: string): string {
   return `${key.slice(0, 7)}…${key.slice(-4)}`;
 }
 
+interface ByokSettingsProps {
+  /** Current saved config, lifted to the parent so it can gate the chat on it. */
+  value: ByokConfig | null;
+  onChange: (cfg: ByokConfig | null) => void;
+}
+
 /**
  * Bring-your-own-key panel (Phase 9). Lets the user enter their own Anthropic
  * API key + pick a model so they pay for their own LLM usage. Saves to
@@ -25,24 +31,17 @@ function mask(key: string): string {
  * `copilotkit.setHeaders` so it takes effect on the very next message (the
  * provider's function-form `headers` only re-reads on re-render).
  */
-export function ByokSettings() {
+export function ByokSettings({ value: saved, onChange }: ByokSettingsProps) {
   const { copilotkit } = useCopilotKit();
   const [open, setOpen] = useState(false);
-  const [saved, setSaved] = useState<{ apiKey: string; model: string } | null>(
-    null,
-  );
   const [draftKey, setDraftKey] = useState("");
-  const [model, setModel] = useState(DEFAULT_BYOK_MODEL);
+  const [model, setModel] = useState(saved?.model ?? DEFAULT_BYOK_MODEL);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Hydrate from sessionStorage on mount.
+  // Keep the model select in sync when the saved config changes externally.
   useEffect(() => {
-    const cfg = getByok();
-    if (cfg) {
-      setSaved(cfg);
-      setModel(cfg.model);
-    }
-  }, []);
+    if (saved) setModel(saved.model);
+  }, [saved]);
 
   // Close the panel on outside click / Escape.
   useEffect(() => {
@@ -75,7 +74,7 @@ export function ByokSettings() {
     if (!key) return;
     setByok(key, model);
     applyHeaders(key, model);
-    setSaved({ apiKey: key, model });
+    onChange({ apiKey: key, model });
     setDraftKey("");
     setOpen(false);
   }
@@ -86,14 +85,14 @@ export function ByokSettings() {
     if (saved) {
       setByok(saved.apiKey, m);
       applyHeaders(saved.apiKey, m);
-      setSaved({ ...saved, model: m });
+      onChange({ ...saved, model: m });
     }
   }
 
   function handleClear() {
     clearByok();
     applyHeaders(null, null);
-    setSaved(null);
+    onChange(null);
     setDraftKey("");
     setModel(DEFAULT_BYOK_MODEL);
   }

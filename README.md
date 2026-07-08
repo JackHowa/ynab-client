@@ -1,75 +1,75 @@
 # ynab-client
 
-A small **Next.js + React** app for accessing the [YNAB API](https://api.ynab.com)
-via **OAuth 2.0**. It lists your budgets and the open accounts (with balances)
-in each.
+A **Next.js + React** conversational budget assistant for [YNAB](https://api.ynab.com).
+Chat with your budget and get **generative UI** back — charts, cards, and tables —
+powered by [CopilotKit](https://copilotkit.ai) and Claude.
 
-Auth uses the **Authorization Code grant with PKCE** and requests the
-**`read-only`** scope, so the app can never modify a connected budget. Tokens
-live in an **encrypted, httpOnly session cookie** and are only ever used
-server-side — they never reach the browser.
+Ask things like:
+
+- "How much have I spent at Panda Express over time?" → spend-over-time chart
+- "Show my spending by category" / "combine Dining + Coffee" → pie chart
+- "List transactions over $100 last month" → filtered transactions
+- "How's this month looking?" → income / budgeted / to-be-budgeted summary
+- "Am I over on Dining?" → budget-vs-actual per category
+- "Show my account balances" → budget card
+- "Plan a budget for a trip to Norway" → editable plan card
+
+## How it works
+
+- **OAuth 2.0** (auth code + PKCE, `read-only`) connects YNAB; tokens live in an
+  encrypted httpOnly cookie and only ever touch the server.
+- A **CopilotKit** runtime (`/api/copilotkit`) runs a Claude agent with
+  server-side tools that read your budget. Tools get the YNAB token per-request
+  via `AsyncLocalStorage`.
+- The agent renders **registered generative-UI components** (`useComponent`) and
+  can compose **open-ended declarative UI** via A2UI.
+- **Multi-budget**: defaults to your most-recently-modified budget; name one to
+  target it ("…in Jack's budget"); `listBudgets` to browse.
+- **Demo mode** (`DEMO_MODE=1`) serves fabricated data so you can demo without
+  real balances.
 
 ## Setup
 
-1. Install dependencies:
+1. `npm install`
+2. Create a YNAB **OAuth app** at <https://app.ynab.com/settings/developer>;
+   register a redirect URI equal to your origin (`http://localhost:3000` for dev,
+   `https://<project>.vercel.app` in prod).
+3. Create `.env.local` (gitignored):
 
    ```bash
-   npm install
+   YNAB_CLIENT_ID=...
+   YNAB_CLIENT_SECRET=...
+   SESSION_SECRET=...            # node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ANTHROPIC_API_KEY=sk-ant-...  # the chat model
+   # Optional:
+   # COPILOTKIT_MODEL=anthropic/claude-sonnet-4-6   # default: anthropic/claude-haiku-4-5
+   # COPILOT_KIT_SECRET=...                          # CopilotKit Intelligence (durable threads)
+   # DEMO_MODE=1                                      # serve fabricated data
    ```
 
-2. Create an **OAuth application** at <https://app.ynab.com/settings/developer>.
-   Note its **Client ID** and **Client Secret**, and register a **Redirect URI**
-   equal to your app's origin (YNAB matches it exactly):
+4. `npm run dev` → <http://localhost:3000>. Connect YNAB, then chat.
 
-   - Local: `http://localhost:3000`
-   - Production: `https://<your-project>.vercel.app`
+## Project map
 
-   > YNAB redirects the auth code back to the registered origin (`/`); the home
-   > page completes the token exchange. The redirect URI is derived from the
-   > request origin, so it always matches the registered value.
-
-3. Create `.env.local` (gitignored) with:
-
-   ```bash
-   YNAB_CLIENT_ID=your-client-id
-   YNAB_CLIENT_SECRET=your-client-secret
-   # 32+ random bytes; generate with:
-   #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   SESSION_SECRET=your-session-secret
-   ```
-
-4. Run the dev server and open <http://localhost:3000>:
-
-   ```bash
-   npm run dev
-   ```
-
-   Click **Connect to YNAB**, approve, and your budgets load.
-
-## What's inside
-
-| Path                         | Purpose                                                            |
-| ---------------------------- | ------------------------------------------------------------------ |
-| `lib/ynab.ts`                | Typed YNAB API client (`getBudgets`, `getAccounts`) + helpers.     |
-| `lib/oauth.ts`               | OAuth helpers: authorize URL, code exchange, refresh (PKCE).       |
-| `lib/session.ts`             | AES-256-GCM encrypted httpOnly session cookie.                     |
-| `app/page.tsx`               | Client UI: Connect button, budget list, logout; finishes login.   |
-| `app/api/auth/login`         | Starts the flow (state + PKCE), redirects to YNAB.                 |
-| `app/api/auth/exchange`      | Exchanges the returned code for tokens, sets the session.          |
-| `app/api/auth/logout`        | Clears the session.                                                |
-| `app/api/budgets`            | Returns budgets + accounts; refreshes the access token if expired. |
+| Path                              | Purpose                                                       |
+| --------------------------------- | ------------------------------------------------------------- |
+| `app/page.tsx`                    | Main screen: the assistant chat + budget names + auth.        |
+| `components/AssistantChat.tsx`    | Registers gen-UI components + starter prompts; mounts chat.   |
+| `components/generative/*`         | Chart/card components (Zod props) the agent renders.          |
+| `app/api/copilotkit/[[...slug]]/` | CopilotKit runtime: Claude agent + YNAB server-side tools.    |
+| `lib/ynab.ts`                     | Typed YNAB client (budgets, accounts, transactions, …).       |
+| `lib/server-ynab.ts`              | Session access token (auto-refresh).                          |
+| `lib/demo-data.ts`                | Fabricated data for `DEMO_MODE`.                              |
+| `lib/oauth.ts` / `lib/session.ts` | OAuth flow + encrypted session cookie.                        |
 
 ## Deploying to Vercel
 
-1. Deploy the app (it'll show the logged-out state until OAuth is configured).
-2. Add your Vercel production URL as a Redirect URI on the YNAB OAuth app.
-3. Set `YNAB_CLIENT_ID`, `YNAB_CLIENT_SECRET`, and a **fresh** `SESSION_SECRET`
-   as encrypted environment variables in Vercel, then redeploy.
+Add the redirect URI for the prod origin on the YNAB app, and set the env vars
+above (including `ANTHROPIC_API_KEY`) as encrypted Vercel env vars, then deploy.
 
 ## Notes
 
-- Access tokens expire after 2 hours; the app refreshes them automatically using
-  the stored refresh token.
-- Balances come from the API in **milliunits** (1000 = 1 unit of currency);
-  `fromMilliunits()` converts them.
-- API base URL: `https://api.ynab.com/v1` — auth via `Authorization: Bearer <token>`.
+- Dev uses **Turbopack** (`next dev --turbopack`) for reliable HMR.
+- See `GOALS.md` for the roadmap (saved dashboards, chat history, more
+  open/declarative UI).
+- API base: `https://api.ynab.com/v1` · auth via `Authorization: Bearer <token>`.

@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useCopilotKit } from "@copilotkit/react-core/v2";
-import {
-  BUDGET_HEADER,
-  clearSelectedBudget,
-  getSelectedBudget,
-  setSelectedBudget,
-} from "@/lib/budget";
+import { BUDGET_HEADER, clearSelectedBudget, setSelectedBudget } from "@/lib/budget";
+
+interface BudgetSelectorProps {
+  /** Lifted to the parent so it can key the chat and force a fresh thread. */
+  value: string;
+  onChange: (name: string) => void;
+}
 
 /**
  * Lets the user pick which YNAB budget the assistant should focus on,
@@ -18,13 +19,11 @@ import {
  *
  * Hidden when there's nothing to disambiguate (0 or 1 budget).
  */
-export function BudgetSelector() {
+export function BudgetSelector({ value: selected, onChange }: BudgetSelectorProps) {
   const { copilotkit } = useCopilotKit();
   const [budgets, setBudgets] = useState<string[]>([]);
-  const [selected, setSelected] = useState("");
 
   useEffect(() => {
-    setSelected(getSelectedBudget() ?? "");
     fetch("/api/budgets")
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
@@ -35,13 +34,13 @@ export function BudgetSelector() {
   }, []);
 
   function handleChange(name: string) {
-    setSelected(name);
     if (name) setSelectedBudget(name);
     else clearSelectedBudget();
     copilotkit.setHeaders({
       ...copilotkit.headers,
       [BUDGET_HEADER]: name || null,
     });
+    onChange(name);
   }
 
   if (budgets.length < 2) return null;

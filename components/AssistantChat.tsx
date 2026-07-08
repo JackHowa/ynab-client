@@ -20,6 +20,7 @@ import { Pinnable } from "@/components/Pinnable";
 import { ByokSettings } from "@/components/ByokSettings";
 import { BudgetSelector } from "@/components/BudgetSelector";
 import { ByokConfig, getByok } from "@/lib/byok";
+import { getSelectedBudget } from "@/lib/budget";
 import { CHAT_MODES, DEFAULT_MODE } from "@/lib/modes";
 
 // Render components are registered as frontend tools that return a small ack
@@ -38,8 +39,12 @@ export function AssistantChat() {
   // Starts null (matches SSR, which has no sessionStorage) and hydrates on
   // mount, same pattern as ByokSettings used before this was lifted up.
   const [byok, setByokState] = useState<ByokConfig | null>(null);
+  // Selected budget also keys the chat below, so switching budgets starts a
+  // fresh thread instead of carrying stale context from the old one.
+  const [budget, setBudget] = useState("");
   useEffect(() => {
     setByokState(getByok());
+    setBudget(getSelectedBudget() ?? "");
   }, []);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -138,13 +143,15 @@ export function AssistantChat() {
             ))}
           </select>
         </label>
-        <BudgetSelector />
+        <BudgetSelector value={budget} onChange={setBudget} />
         <ByokSettings value={byok} onChange={setByokState} />
       </div>
       {byok ? (
         <div className={`chat-window${isDark ? " dark" : ""}`}>
-          {/* agentId switches the persona; tools are shared across agents. */}
-          <CopilotChat agentId={mode} />
+          {/* agentId switches the persona; keying on budget remounts (and so
+              resets) the thread when the user switches which budget the
+              assistant should focus on. */}
+          <CopilotChat key={budget} agentId={mode} />
         </div>
       ) : (
         <div className="chat-gate">

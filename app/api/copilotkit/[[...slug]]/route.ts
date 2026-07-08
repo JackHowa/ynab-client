@@ -420,6 +420,14 @@ const handlers = new Map<
 // NOTE: this CopilotKit version passes the model id straight to the AI SDK, so
 // use the AI SDK's dash-form ids (e.g. claude-sonnet-4-6), NOT the dotted
 // "claude-sonnet-4.5" the CopilotKit docs show (Anthropic rejects that string).
+// The selected-budget header is percent-encoded client-side (budget names are
+// free text and may contain non-Latin1 characters, which the Headers API
+// rejects raw) — decode it back here.
+function selectedBudgetFromHeader(req: Request): string | null {
+  const raw = req.headers.get(BUDGET_HEADER)?.trim();
+  return raw ? decodeURIComponent(raw) : null;
+}
+
 function resolveModel(req: Request): { model: string; apiKey?: string } {
   const userKey = req.headers.get(LLM_KEY_HEADER)?.trim();
   if (userKey) {
@@ -443,12 +451,16 @@ function resolveModel(req: Request): { model: string; apiKey?: string } {
 // Resolve the per-request key/model and return a cached handler built for it.
 function handlerFor(req: Request) {
   const { model, apiKey } = resolveModel(req);
-  // Cache key: model + apiKey. A space can't appear in a model id or API key.
-  const cacheKey = `${model} ${apiKey ?? ""}`;
+  const selectedBudget = selectedBudgetFromHeader(req);
+  // Cache key: model + apiKey + selectedBudget, newline-separated (none of
+  // these can contain a newline).
+  const cacheKey = `${model}
+${apiKey ?? ""}
+${selectedBudget ?? ""}`;
   const existing = handlers.get(cacheKey);
   if (existing) return existing;
 
-  const built = buildHandler(model, apiKey);
+  const built = buildHandler(model, apiKey, selectedBudget);
   // Bound the cache (simple FIFO eviction) so distinct keys can't grow it forever.
   if (handlers.size >= MAX_HANDLERS) {
     const oldest = handlers.keys().next().value;
@@ -458,7 +470,7 @@ function handlerFor(req: Request) {
   return built;
 }
 
-function buildHandler(model: string, apiKey?: string) {
+function buildHandler(model: string, apiKey: string | undefined, selectedBudget: string | null) {
   const TOOLS = [
     listBudgets,
     getSpendingByPayee,
@@ -480,7 +492,13 @@ function buildHandler(model: string, apiKey?: string) {
     "For account balances, call getBudgetOverview then render budgetCard. For " +
     "budget-vs-actual use getCategoryBudgets; for 'how's this month' use " +
     "getMonthSummary. To plan a trip or goal, render planCard (a suggestion, " +
-    "not written to YNAB).";
+    "not written to YNAB)." +
+    (selectedBudget
+      ? ` The user has selected the budget "${selectedBudget}" via a dropdown ` +
+        "— treat every question as being about that budget (pass it as " +
+        "budgetName on every tool call) unless they explicitly name a " +
+        "different one."
+      : "");
 
   // One agent per selectable mode/personality. The frontend picks via agentId.
   const agents = Object.fromEntries(

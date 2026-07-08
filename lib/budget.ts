@@ -33,8 +33,12 @@ export function clearSelectedBudget(): void {
  * Build the header set from the stored selection. Used to seed the
  * CopilotKit provider at mount so a selection survives a page reload.
  * Returns an empty object when nothing is selected.
+ *
+ * Header values must be ISO-8859-1 (the Fetch/Headers API throws otherwise),
+ * but budget names are free text and may contain non-Latin1 characters (e.g.
+ * a curly apostrophe or emoji) — percent-encode; the route decodes it back.
  */
 export function selectedBudgetHeaders(): Record<string, string> {
   const name = getSelectedBudget();
-  return name ? { [BUDGET_HEADER]: name } : {};
+  return name ? { [BUDGET_HEADER]: encodeURIComponent(name) } : {};
 }

@@ -38,7 +38,7 @@ export function BudgetSelector({ value: selected, onChange }: BudgetSelectorProp
     else clearSelectedBudget();
     copilotkit.setHeaders({
       ...copilotkit.headers,
-      [BUDGET_HEADER]: name || null,
+      [BUDGET_HEADER]: name ? encodeURIComponent(name) : null,
     });
     onChange(name);
   }

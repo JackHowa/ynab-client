@@ -17,6 +17,7 @@ import {
   LLM_KEY_HEADER,
   LLM_MODEL_HEADER,
 } from "@/lib/byok";
+import { BUDGET_HEADER } from "@/lib/budget";
 import {
   DEMO_BUDGET,
   DEMO_TRANSACTIONS,
@@ -27,9 +28,14 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Carries the current request's YNAB access token into server-side tool
-// execution (tools don't receive the request, so we seed this per-request).
-const tokenStore = new AsyncLocalStorage<string | null>();
+// Carries the current request's YNAB access token + selected budget into
+// server-side tool execution (tools don't receive the request, so we seed
+// this per-request).
+interface RequestContext {
+  token: string | null;
+  selectedBudget: string | null;
+}
+const requestStore = new AsyncLocalStorage<RequestContext>();
 
 type LoadResult =
   | { budget: Budget; transactions: Transaction[] }
@@ -39,7 +45,7 @@ type LoadResult =
 // token) so the assistant is usable immediately, without setup. DEMO_MODE=1
 // forces it even when connected (useful for screenshots/demos).
 function shouldUseDemo(): boolean {
-  return process.env.DEMO_MODE === "1" || !tokenStore.getStore();
+  return process.env.DEMO_MODE === "1" || !requestStore.getStore()?.token;
 }
 
 // Single data source for the tools: demo -> fabricated data; otherwise the
@@ -56,7 +62,7 @@ async function loadData(opts: {
       transactions: filterSince(DEMO_TRANSACTIONS, opts.sinceDate),
     };
   }
-  const ynab = new YnabClient(tokenStore.getStore()!);
+  const ynab = new YnabClient(requestStore.getStore()!.token!);
   const budgets = await ynab.getBudgets();
   if (budgets.length === 0) return { error: "No budgets found." };
 
@@ -66,17 +72,19 @@ async function loadData(opts: {
   return { budget: selected.budget, transactions };
 }
 
-// Choose a budget by name (partial) or default to most-recently modified.
+// Choose a budget by name (partial), falling back to the user's dropdown
+// selection, then to the most-recently-modified budget.
 function selectBudget(
   budgets: Budget[],
   budgetName?: string,
 ): { budget: Budget } | { error: string } {
-  if (budgetName) {
-    const q = budgetName.toLowerCase();
+  const name = budgetName || requestStore.getStore()?.selectedBudget || undefined;
+  if (name) {
+    const q = name.toLowerCase();
     const match = budgets.find((b) => b.name.toLowerCase().includes(q));
     if (!match)
       return {
-        error: `No budget matching "${budgetName}". Available: ${budgets
+        error: `No budget matching "${name}". Available: ${budgets
           .map((b) => b.name)
           .join(", ")}.`,
       };
@@ -92,7 +100,7 @@ function selectBudget(
 async function resolveBudget(
   budgetName?: string,
 ): Promise<{ ynab: YnabClient; budget: Budget } | { error: string }> {
-  const token = tokenStore.getStore();
+  const token = requestStore.getStore()?.token;
   if (!token) return { error: "Not connected to YNAB." };
   const ynab = new YnabClient(token);
   const budgets = await ynab.getBudgets();
@@ -108,7 +116,10 @@ const getCategoryBudgets = defineTool({
     "This month's budget per category: budgeted vs spent vs remaining. Use for " +
     "'am I over on Dining?' or budget-vs-actual questions.",
   parameters: z.object({
-    budgetName: z.string().optional().describe("Which budget. Defaults to most recent."),
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget. Defaults to the user's selected budget, else the most recent."),
   }),
   execute: async ({ budgetName }) => {
     if (shouldUseDemo()) {
@@ -157,7 +168,10 @@ const getMonthSummary = defineTool({
     "Summary for a month: income, budgeted, spent, to-be-budgeted, age of " +
     "money. Use for 'how's this month looking?'.",
   parameters: z.object({
-    budgetName: z.string().optional().describe("Which budget. Defaults to most recent."),
+    budgetName: z
+      .string()
+      .optional()
+      .describe("Which budget. Defaults to the user's selected budget, else the most recent."),
     month: z
       .string()
       .optional()
@@ -205,7 +219,7 @@ const getBudgetOverview = defineTool({
     budgetName: z
       .string()
       .optional()
-      .describe("Which budget (name, partial ok). Defaults to most recent."),
+      .describe("Which budget (name, partial ok). Defaults to the user's selected budget, else the most recent."),
   }),
   execute: async ({ budgetName }) => {
     if (shouldUseDemo()) {
@@ -218,7 +232,7 @@ const getBudgetOverview = defineTool({
         })),
       };
     }
-    const ynab = new YnabClient(tokenStore.getStore()!);
+    const ynab = new YnabClient(requestStore.getStore()!.token!);
     const budgets = await ynab.getBudgets();
     if (budgets.length === 0) return { error: "No budgets found." };
     const selected = selectBudget(budgets, budgetName);
@@ -242,7 +256,7 @@ const listBudgets = defineTool({
   parameters: z.object({}),
   execute: async () => {
     if (shouldUseDemo()) return { budgets: [DEMO_BUDGET.name] };
-    const ynab = new YnabClient(tokenStore.getStore()!);
+    const ynab = new YnabClient(requestStore.getStore()!.token!);
     const budgets = await ynab.getBudgets();
     return { budgets: budgets.map((b) => b.name) };
   },
@@ -258,7 +272,7 @@ const getSpendingByCategory = defineTool({
     budgetName: z
       .string()
       .optional()
-      .describe("Which budget (name, partial ok). Defaults to most recent."),
+      .describe("Which budget (name, partial ok). Defaults to the user's selected budget, else the most recent."),
     sinceDate: z
       .string()
       .optional()
@@ -294,7 +308,7 @@ const queryTransactions = defineTool({
     budgetName: z
       .string()
       .optional()
-      .describe("Which budget (name, partial ok). Defaults to most recent."),
+      .describe("Which budget (name, partial ok). Defaults to the user's selected budget, else the most recent."),
     payee: z.string().optional().describe("Filter by payee substring"),
     category: z.string().optional().describe("Filter by category substring"),
     sinceDate: z
@@ -345,7 +359,7 @@ const getSpendingByPayee = defineTool({
     budgetName: z
       .string()
       .optional()
-      .describe("Which budget (name, partial ok). Defaults to most recent."),
+      .describe("Which budget (name, partial ok). Defaults to the user's selected budget, else the most recent."),
     sinceDate: z
       .string()
       .optional()
@@ -504,9 +518,11 @@ export function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   // Read the YNAB token here (route-handler scope can access cookies), then
-  // make it available to tool execution via AsyncLocalStorage.
+  // make it + the selected-budget header available to tool execution via
+  // AsyncLocalStorage.
   const token = await getValidAccessToken();
-  return tokenStore.run(token, () => handlerFor(req)(req)) as
+  const selectedBudget = req.headers.get(BUDGET_HEADER)?.trim() || null;
+  return requestStore.run({ token, selectedBudget }, () => handlerFor(req)(req)) as
     | Response
     | Promise<Response>;
 }

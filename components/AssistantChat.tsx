@@ -18,6 +18,7 @@ import {
 import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
 import { Pinnable } from "@/components/Pinnable";
 import { ByokSettings } from "@/components/ByokSettings";
+import { BudgetSelector } from "@/components/BudgetSelector";
 import { ByokConfig, getByok } from "@/lib/byok";
 import { CHAT_MODES, DEFAULT_MODE } from "@/lib/modes";
 
@@ -137,6 +138,7 @@ export function AssistantChat() {
             ))}
           </select>
         </label>
+        <BudgetSelector />
         <ByokSettings value={byok} onChange={setByokState} />
       </div>
       {byok ? (

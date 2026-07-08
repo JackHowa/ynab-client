@@ -106,14 +106,17 @@ References (example sources to mirror):
 
 So each user pays for their own LLM usage instead of the app owner.
 
-- [ ] Settings UI to enter an **Anthropic (or other) API key** and pick a
-      **model** (`COPILOTKIT_MODEL`-style). Stored client-side (sessionStorage)
-      and sent to the runtime per-request via a header (like the dynamic-auth
-      `setHeaders` pattern), never committed.
-- [ ] Runtime reads the per-request key/model and builds the agent with it;
-      falls back to the server key only if explicitly allowed (or refuses).
-- [ ] Security: treat the user's key like the YNAB token — server-side only in
-      transit, never logged, clear on logout. Document the trust model.
+- [x] Settings UI (`ByokSettings`) to enter an **Anthropic API key** and pick a
+      **model**. Stored client-side (sessionStorage) and sent to the runtime
+      per-request via the `x-llm-api-key` / `x-llm-model` headers (seeded at
+      provider mount via function-form `headers`, pushed live on save via
+      `copilotkit.setHeaders`), never committed. See `lib/byok.ts`.
+- [x] Runtime reads the per-request key/model and builds the agent with it
+      (cached per `model+key`, bounded); falls back to the server key unless
+      `ALLOW_SERVER_LLM_KEY=0` (strict per-user billing).
+- [x] Security: treat the user's key like the YNAB token — sessionStorage only,
+      in transit to our own runtime, never logged, cleared on logout. Trust
+      model documented in `lib/byok.ts`.
 - [ ] Optional: support OpenAI/Google too (model prefix selects the provider).
 
 ## Phase 5 — Polish & deploy

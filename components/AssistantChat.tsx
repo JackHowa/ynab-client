@@ -17,6 +17,8 @@ import {
 } from "@/components/generative/SpendOverTimeChart";
 import { PlanCard, PlanCardProps } from "@/components/generative/PlanCard";
 import { Pinnable } from "@/components/Pinnable";
+import { ByokSettings } from "@/components/ByokSettings";
+import { ByokConfig, getByok } from "@/lib/byok";
 import { CHAT_MODES, DEFAULT_MODE } from "@/lib/modes";
 
 // Render components are registered as frontend tools that return a small ack
@@ -31,6 +33,13 @@ export function AssistantChat() {
   // Match CopilotKit's chat theme to the system color scheme.
   const [isDark, setIsDark] = useState(false);
   const [mode, setMode] = useState(DEFAULT_MODE);
+  // Gates the chat window: the assistant only opens once a key is on file.
+  // Starts null (matches SSR, which has no sessionStorage) and hydrates on
+  // mount, same pattern as ByokSettings used before this was lifted up.
+  const [byok, setByokState] = useState<ByokConfig | null>(null);
+  useEffect(() => {
+    setByokState(getByok());
+  }, []);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => setIsDark(mq.matches);
@@ -128,11 +137,18 @@ export function AssistantChat() {
             ))}
           </select>
         </label>
+        <ByokSettings value={byok} onChange={setByokState} />
       </div>
-      <div className={`chat-window${isDark ? " dark" : ""}`}>
-        {/* agentId switches the persona; tools are shared across agents. */}
-        <CopilotChat agentId={mode} />
-      </div>
+      {byok ? (
+        <div className={`chat-window${isDark ? " dark" : ""}`}>
+          {/* agentId switches the persona; tools are shared across agents. */}
+          <CopilotChat agentId={mode} />
+        </div>
+      ) : (
+        <div className="chat-gate">
+          Add your Anthropic API key above (🔑) to start chatting.
+        </div>
+      )}
     </>
   );
 }
